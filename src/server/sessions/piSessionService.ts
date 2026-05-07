@@ -5,13 +5,37 @@ import {
   SessionManager,
   type AgentSession,
 } from "@mariozechner/pi-coding-agent";
-import type { ClientSession } from "../types.js";
+import type { ClientCommand, ClientSession, ClientSessionStatus } from "../types.js";
 import type { SessionEventHub } from "../realtime/sessionEventHub.js";
 
 interface ActiveSession {
   session: AgentSession;
   unsubscribe: () => void;
 }
+
+const BUILTIN_COMMANDS: ClientCommand[] = [
+  { name: "settings", description: "Open settings menu", source: "builtin" },
+  { name: "model", description: "Select model", source: "builtin" },
+  { name: "scoped-models", description: "Enable/disable models for cycling", source: "builtin" },
+  { name: "export", description: "Export session", source: "builtin" },
+  { name: "import", description: "Import and resume a session from JSONL", source: "builtin" },
+  { name: "share", description: "Share session as a secret GitHub gist", source: "builtin" },
+  { name: "copy", description: "Copy last agent message", source: "builtin" },
+  { name: "name", description: "Set session display name", source: "builtin" },
+  { name: "session", description: "Show session info and stats", source: "builtin" },
+  { name: "changelog", description: "Show changelog entries", source: "builtin" },
+  { name: "hotkeys", description: "Show keyboard shortcuts", source: "builtin" },
+  { name: "fork", description: "Create a new fork from a previous user message", source: "builtin" },
+  { name: "clone", description: "Duplicate current session at current position", source: "builtin" },
+  { name: "tree", description: "Navigate session tree", source: "builtin" },
+  { name: "login", description: "Configure provider authentication", source: "builtin" },
+  { name: "logout", description: "Remove provider authentication", source: "builtin" },
+  { name: "new", description: "Start a new session", source: "builtin" },
+  { name: "compact", description: "Manually compact session context", source: "builtin" },
+  { name: "resume", description: "Resume a different session", source: "builtin" },
+  { name: "reload", description: "Reload keybindings, extensions, skills, prompts, and themes", source: "builtin" },
+  { name: "quit", description: "Quit pi", source: "builtin" },
+];
 
 export class PiSessionService {
   private readonly active = new Map<string, ActiveSession>();
@@ -50,6 +74,25 @@ export class PiSessionService {
   async messages(sessionId: string): Promise<unknown[]> {
     const session = await this.getOrOpen(sessionId);
     return session.messages;
+  }
+
+  async status(sessionId: string): Promise<ClientSessionStatus> {
+    return this.statusFromSession(await this.getOrOpen(sessionId));
+  }
+
+  async commands(sessionId: string): Promise<ClientCommand[]> {
+    const session = await this.getOrOpen(sessionId);
+    const commands: ClientCommand[] = [...BUILTIN_COMMANDS];
+    for (const command of session.extensionRunner.getRegisteredCommands()) {
+      commands.push({ name: command.invocationName, description: command.description, source: "extension" });
+    }
+    for (const template of session.promptTemplates) {
+      commands.push({ name: template.name, description: template.description, source: "prompt" });
+    }
+    for (const skill of session.resourceLoader.getSkills().skills) {
+      commands.push({ name: `skill:${skill.name}`, description: skill.description, source: "skill" });
+    }
+    return commands.sort((a, b) => a.name.localeCompare(b.name));
   }
 
   async prompt(sessionId: string, text: string): Promise<void> {
@@ -91,11 +134,37 @@ export class PiSessionService {
 
     const unsubscribe = session.subscribe((event) => {
       this.events.publish(session.sessionId, toClientEvent(event));
+      this.events.publish(session.sessionId, { type: "status.update", status: this.statusFromSession(session) });
     });
 
     const active = { session, unsubscribe };
     this.active.set(session.sessionId, active);
+    this.events.publish(session.sessionId, { type: "status.update", status: this.statusFromSession(session) });
     return active;
+  }
+
+  private statusFromSession(session: AgentSession): ClientSessionStatus {
+    const stats = session.getSessionStats();
+    return {
+      sessionId: session.sessionId,
+      model: session.model
+        ? {
+            provider: session.model.provider,
+            id: session.model.id,
+            name: (session.model as any).name,
+            contextWindow: session.model.contextWindow,
+            reasoning: (session.model as any).reasoning,
+          }
+        : undefined,
+      thinkingLevel: session.thinkingLevel,
+      isStreaming: session.isStreaming,
+      isCompacting: session.isCompacting,
+      isBashRunning: session.isBashRunning,
+      pendingMessageCount: session.pendingMessageCount,
+      tokens: stats.tokens,
+      cost: stats.cost,
+      contextUsage: session.getContextUsage(),
+    };
   }
 }
 

@@ -1,9 +1,10 @@
-import { sessionEvents } from "./api";
+import { sessionEvents, type SessionStatus } from "./api";
 
 export type SessionUiEvent =
   | { type: "assistant.delta"; text: string }
   | { type: "tool.start"; toolName: string }
   | { type: "tool.end"; toolName: string; isError: boolean }
+  | { type: "status.update"; status: SessionStatus }
   | { type: "session.error"; message: string };
 
 export class SessionSocket {
@@ -25,5 +26,5 @@ export class SessionSocket {
 }
 
 function isSessionUiEvent(event: any): event is SessionUiEvent {
-  return ["assistant.delta", "tool.start", "tool.end", "session.error"].includes(event?.type);
+  return ["assistant.delta", "tool.start", "tool.end", "status.update", "session.error"].includes(event?.type);
 }

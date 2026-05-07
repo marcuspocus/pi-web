@@ -25,3 +25,27 @@ export interface ClientSession {
   messageCount: number;
   firstMessage: string;
 }
+
+export interface ClientSessionStatus {
+  sessionId: string;
+  model?: { provider?: string; id?: string; name?: string; contextWindow?: number; reasoning?: unknown };
+  thinkingLevel?: string;
+  isStreaming: boolean;
+  isCompacting: boolean;
+  isBashRunning: boolean;
+  pendingMessageCount: number;
+  tokens: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number };
+  cost: number;
+  contextUsage?: { tokens: number | null; contextWindow: number; percent: number | null };
+}
+
+export interface ClientCommand {
+  name: string;
+  description?: string;
+  source: "extension" | "prompt" | "skill" | "builtin";
+}
+
+export interface ClientFileSuggestion {
+  path: string;
+  kind: "tracked" | "untracked" | "other";
+}

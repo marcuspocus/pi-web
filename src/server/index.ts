@@ -8,6 +8,7 @@ import { ProjectService } from "./projects/projectService.js";
 import { WorkspaceService } from "./workspaces/workspaceService.js";
 import { SessionEventHub } from "./realtime/sessionEventHub.js";
 import { PiSessionService } from "./sessions/piSessionService.js";
+import { listFileSuggestions } from "./workspaces/fileSuggestions.js";
 
 const app = Fastify({ logger: true });
 await app.register(fastifyWebsocket);
@@ -57,6 +58,22 @@ app.get<{ Params: { sessionId: string } }>("/api/sessions/:sessionId/messages", 
   }
 });
 
+app.get<{ Params: { sessionId: string } }>("/api/sessions/:sessionId/status", async (request, reply) => {
+  try {
+    return await sessions.status(request.params.sessionId);
+  } catch (error) {
+    return reply.code(404).send({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.get<{ Params: { sessionId: string } }>("/api/sessions/:sessionId/commands", async (request, reply) => {
+  try {
+    return await sessions.commands(request.params.sessionId);
+  } catch (error) {
+    return reply.code(404).send({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
 app.post<{ Params: { sessionId: string }; Body: { text: string } }>("/api/sessions/:sessionId/prompt", async (request, reply) => {
   try {
     await sessions.prompt(request.params.sessionId, request.body.text);
@@ -78,6 +95,15 @@ app.post<{ Params: { sessionId: string } }>("/api/sessions/:sessionId/close", as
 
 app.get<{ Params: { sessionId: string } }>("/api/sessions/:sessionId/events", { websocket: true }, (socket, request) => {
   eventHub.add(request.params.sessionId, socket);
+});
+
+app.get<{ Querystring: { cwd?: string; q?: string; kind?: "tracked" | "untracked" | "other" } }>("/api/files", async (request, reply) => {
+  if (!request.query.cwd) return reply.code(400).send({ error: "cwd query parameter is required" });
+  try {
+    return await listFileSuggestions(request.query.cwd, request.query.q ?? "", request.query.kind);
+  } catch (error) {
+    return reply.code(400).send({ error: error instanceof Error ? error.message : String(error) });
+  }
 });
 
 const clientDist = join(process.cwd(), "dist", "client");

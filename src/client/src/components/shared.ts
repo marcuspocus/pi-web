@@ -12,6 +12,15 @@ export interface ChatLine {
   parts: ChatPart[];
 }
 
+export interface CompletionItem {
+  kind: "command" | "file";
+  replaceFrom: number;
+  replaceTo: number;
+  insertText: string;
+  detail: string;
+  description?: string;
+}
+
 export const appStyles = css`
   :host { display: block; height: 100vh; color: #e6edf3; background: #0d1117; font: 14px system-ui, sans-serif; }
   .shell { display: grid; grid-template-columns: 340px 1fr; height: 100%; min-height: 0; }
@@ -20,8 +29,9 @@ export const appStyles = css`
   project-list, workspace-list { flex: 0 0 auto; max-height: 26%; overflow: auto; border-bottom: 1px solid #21262d; }
   session-list { flex: 1 1 auto; min-height: 0; overflow: auto; }
   main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  status-bar { flex: 0 0 auto; }
   chat-view { flex: 1 1 auto; min-height: 0; overflow: auto; }
-  chat-composer { flex: 0 0 auto; }
+  prompt-editor, chat-composer { flex: 0 0 auto; }
   button { border: 1px solid #30363d; border-radius: 8px; background: #161b22; color: #e6edf3; padding: 7px 9px; cursor: pointer; }
   .empty { margin: auto; color: #8b949e; }
   .error { padding: 10px 16px; border-bottom: 1px solid #30363d; color: #ff7b72; }
@@ -78,10 +88,31 @@ export const formattedTextStyles = css`
   th { background: #161b22; }
 `;
 
-export const composerStyles = css`
+export const statusBarStyles = css`
+  :host { display: block; color: #8b949e; font: 12px system-ui, sans-serif; }
+  .bar { display: flex; gap: 12px; align-items: center; min-width: 0; padding: 7px 12px; border-bottom: 1px solid #30363d; background: #0d1117; white-space: nowrap; overflow: hidden; }
+  span { overflow: hidden; text-overflow: ellipsis; }
+  span:first-child { flex: 1 1 auto; min-width: 80px; }
+  .muted { color: #6e7681; }
+`;
+
+export const autocompleteStyles = css`
+  :host { display: block; }
+  .menu { position: absolute; left: 0; right: 0; bottom: calc(100% + 6px); max-height: 260px; overflow: auto; border: 1px solid #30363d; border-radius: 8px; background: #161b22; box-shadow: 0 10px 30px #0008; }
+  button { display: grid; grid-template-columns: minmax(120px, 1fr) auto; gap: 4px 10px; width: 100%; border: 0; border-bottom: 1px solid #30363d; border-radius: 0; background: transparent; color: #e6edf3; padding: 8px 10px; text-align: left; cursor: pointer; }
+  button:last-child { border-bottom: 0; }
+  button.selected, button:hover { background: #0d2847; }
+  span { color: #8b949e; font-size: 12px; }
+  small { grid-column: 1 / -1; color: #8b949e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+`;
+
+export const promptEditorStyles = css`
   :host { display: block; color: #e6edf3; font: 14px system-ui, sans-serif; }
   footer { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; padding: 12px; border-top: 1px solid #30363d; }
-  textarea { min-height: 54px; resize: vertical; border-radius: 8px; border: 1px solid #30363d; background: #0d1117; color: #e6edf3; padding: 8px; }
+  .editor-wrap { position: relative; min-width: 0; }
+  textarea { box-sizing: border-box; width: 100%; min-height: 54px; resize: vertical; border-radius: 8px; border: 1px solid #30363d; background: #0d1117; color: #e6edf3; padding: 8px; }
   button { border: 1px solid #30363d; border-radius: 8px; background: #161b22; color: #e6edf3; padding: 7px 9px; cursor: pointer; }
   button:disabled, textarea:disabled { opacity: .5; cursor: not-allowed; }
 `;
+
+export const composerStyles = promptEditorStyles;

@@ -26,6 +26,30 @@ export interface SessionInfo {
   firstMessage: string;
 }
 
+export interface SessionStatus {
+  sessionId: string;
+  model?: { provider?: string; id?: string; name?: string; contextWindow?: number; reasoning?: unknown };
+  thinkingLevel?: string;
+  isStreaming: boolean;
+  isCompacting: boolean;
+  isBashRunning: boolean;
+  pendingMessageCount: number;
+  tokens: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number };
+  cost: number;
+  contextUsage?: { tokens: number | null; contextWindow: number; percent: number | null };
+}
+
+export interface SlashCommand {
+  name: string;
+  description?: string;
+  source: "extension" | "prompt" | "skill" | "builtin";
+}
+
+export interface FileSuggestion {
+  path: string;
+  kind: "tracked" | "untracked" | "other";
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
@@ -45,6 +69,9 @@ export const api = {
   sessions: (cwd: string) => request<SessionInfo[]>(`/api/sessions?cwd=${encodeURIComponent(cwd)}`),
   startSession: (cwd: string) => request<SessionInfo>("/api/sessions", { method: "POST", body: JSON.stringify({ cwd }) }),
   messages: (sessionId: string) => request<any[]>(`/api/sessions/${sessionId}/messages`),
+  status: (sessionId: string) => request<SessionStatus>(`/api/sessions/${sessionId}/status`),
+  commands: (sessionId: string) => request<SlashCommand[]>(`/api/sessions/${sessionId}/commands`),
+  files: (cwd: string, query: string, kind?: FileSuggestion["kind"]) => request<FileSuggestion[]>(`/api/files?cwd=${encodeURIComponent(cwd)}&q=${encodeURIComponent(query)}${kind ? `&kind=${encodeURIComponent(kind)}` : ""}`),
   prompt: (sessionId: string, text: string) => request<{ accepted: true }>(`/api/sessions/${sessionId}/prompt`, { method: "POST", body: JSON.stringify({ text }) }),
   close: (sessionId: string) => request<{ closed: true }>(`/api/sessions/${sessionId}/close`, { method: "POST" }),
 };
