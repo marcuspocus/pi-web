@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "sh -c 'npm run dev:server & npm run dev:client & wait'",
+    "dev": "bash -c 'trap \"kill 0\" EXIT; npm run dev:server & npm run dev:client & wait'",
     "dev:server": "tsx watch src/server/index.ts",
     "dev:client": "vite --host 0.0.0.0",
     "build": "tsc && vite build",
