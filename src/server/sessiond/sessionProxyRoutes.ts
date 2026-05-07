@@ -16,6 +16,8 @@ export function registerSessionProxyRoutes(app: FastifyInstance, daemon = new Se
     }
   };
 
+  app.get("/api/sessiond/health", (_request, reply) => proxy({ method: "GET", url: "/api/health" }, reply));
+
   app.get<{ Querystring: { cwd?: string } }>("/api/sessions", (request, reply) => proxy(request, reply));
   app.post<{ Body: { cwd: string } }>("/api/sessions", (request, reply) => proxy(request, reply));
   app.get<{ Params: { sessionId: string } }>("/api/sessions/:sessionId/messages", (request, reply) => proxy(request, reply));

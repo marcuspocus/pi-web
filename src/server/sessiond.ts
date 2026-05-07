@@ -14,6 +14,20 @@ const eventHub = new SessionEventHub();
 const sessions = new PiSessionService(eventHub);
 registerSessionRoutes(app, sessions, eventHub);
 
+app.get("/health", () => ({ ok: true, activeSessions: sessions.activeCount(), checkedAt: new Date().toISOString() }));
+
+let shuttingDown = false;
+async function shutdown(signal: NodeJS.Signals): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  app.log.info({ signal }, "shutting down session daemon");
+  await sessions.dispose();
+  await app.close();
+}
+
+process.once("SIGINT", (signal) => { void shutdown(signal); });
+process.once("SIGTERM", (signal) => { void shutdown(signal); });
+
 const portValue = process.env["PI_WEB_SESSIOND_PORT"];
 const port = portValue !== undefined && portValue !== "" ? Number(portValue) : undefined;
 const host = process.env["PI_WEB_SESSIOND_HOST"] ?? "127.0.0.1";

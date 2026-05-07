@@ -47,6 +47,22 @@ export class PiSessionService {
     );
   }
 
+  activeCount(): number {
+    return this.active.size;
+  }
+
+  async dispose(): Promise<void> {
+    clearInterval(this.heartbeat);
+    const activeSessions = Array.from(new Set(this.active.values()));
+    this.active.clear();
+    this.activities.clear();
+    await Promise.all(activeSessions.map(async (active) => {
+      active.unsubscribe();
+      await active.runtime.session.abort();
+      await active.runtime.dispose();
+    }));
+  }
+
   async list(cwd: string): Promise<ClientSession[]> {
     const [sessions, archivedRecords] = await Promise.all([SessionManager.list(cwd), this.archiveStore.list()]);
     const archivedById = new Map(archivedRecords.filter((record) => record.cwd === cwd).map((record) => [record.sessionId, record]));
