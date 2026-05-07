@@ -1,5 +1,5 @@
 import { LitElement, html } from "lit";
-import { customElement, property, state } from "lit/decorators.js";
+import { customElement, property, query, state } from "lit/decorators.js";
 import { api, type FileSuggestion, type SlashCommand } from "../api";
 import { promptEditorStyles, type CompletionItem } from "./shared";
 import "./AutocompleteMenu";
@@ -11,6 +11,7 @@ export class PromptEditor extends LitElement {
   @property() cwd?: string;
   @property({ attribute: false }) onSend?: (text: string) => void;
   @property({ attribute: false }) onCloseSession?: () => void;
+  @query("textarea") private textarea?: HTMLTextAreaElement;
   @state() private draft = "";
   @state() private completions: CompletionItem[] = [];
   @state() private selectedIndex = 0;
@@ -30,9 +31,13 @@ export class PromptEditor extends LitElement {
           <autocomplete-menu .items=${this.completions} .selectedIndex=${this.selectedIndex} .onPick=${(item: CompletionItem) => this.pick(item)}></autocomplete-menu>
         </div>
         <button ?disabled=${this.disabled} @click=${this.send}>Send</button>
-        <button ?disabled=${this.disabled} @click=${() => this.onCloseSession?.()}>Close</button>
+        <button ?disabled=${this.disabled} title="Stop this session runtime on the server" @click=${() => this.onCloseSession?.()}>Stop</button>
       </footer>
     `;
+  }
+
+  focusInput() {
+    this.textarea?.focus();
   }
 
   private updateDraft(value: string) {

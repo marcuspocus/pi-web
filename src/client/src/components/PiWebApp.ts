@@ -12,6 +12,7 @@ import "./SessionList";
 import "./ChatView";
 import type { ChatView } from "./ChatView";
 import "./PromptEditor";
+import type { PromptEditor } from "./PromptEditor";
 import "./StatusBar";
 import "./CommandPicker";
 import { appStyles } from "./shared";
@@ -20,6 +21,7 @@ import { appStyles } from "./shared";
 export class PiWebApp extends LitElement {
   @state() private state: AppState = initialAppState();
   @query("chat-view") private chatView?: ChatView;
+  @query("prompt-editor") private promptEditor?: PromptEditor;
 
   private readonly sessions = new SessionController(
     () => this.state,
@@ -42,6 +44,7 @@ export class PiWebApp extends LitElement {
   connectedCallback(): void {
     super.connectedCallback();
     window.addEventListener("popstate", this.onPopState);
+    this.sessions.connectStatusUpdates();
     void this.loadProjectsAndRestoreRoute();
   }
 
@@ -75,6 +78,7 @@ export class PiWebApp extends LitElement {
     await this.chatView?.updateComplete;
     await nextFrame();
     this.chatView?.restoreScrollPosition();
+    this.promptEditor?.focusInput();
   }
 
   private updateUrl() {
@@ -96,7 +100,7 @@ export class PiWebApp extends LitElement {
           </header>
           <project-list .projects=${state.projects} .selected=${state.selectedProject} .onSelect=${(project: Project) => this.withChatScrollTransition(() => this.workspaces.selectProject(project))}></project-list>
           <workspace-list .workspaces=${state.workspaces} .selected=${state.selectedWorkspace} .onSelect=${(workspace: Workspace) => this.withChatScrollTransition(() => this.workspaces.selectWorkspace(workspace))}></workspace-list>
-          <session-list .sessions=${state.sessions} .selected=${state.selectedSession} .canStart=${!!state.selectedWorkspace} .onStart=${() => this.withChatScrollTransition(() => this.sessions.startSession())} .onSelect=${(session: SessionInfo) => this.withChatScrollTransition(() => this.sessions.selectSession(session))}></session-list>
+          <session-list .sessions=${state.sessions} .statuses=${state.sessionStatuses} .selected=${state.selectedSession} .canStart=${!!state.selectedWorkspace} .onStart=${() => this.withChatScrollTransition(() => this.sessions.startSession())} .onSelect=${(session: SessionInfo) => this.withChatScrollTransition(() => this.sessions.selectSession(session))}></session-list>
         </aside>
         <main>
           ${state.error ? html`<div class="error">${state.error}</div>` : null}

@@ -10,6 +10,7 @@ export interface AppState {
   selectedWorkspace?: Workspace;
   selectedSession?: SessionInfo;
   status?: SessionStatus;
+  sessionStatuses: Record<string, SessionStatus>;
   commandDialog?: Extract<CommandResult, { type: "select" }>;
   error: string;
 }
@@ -20,6 +21,7 @@ export function initialAppState(): AppState {
     workspaces: [],
     sessions: [],
     messages: [],
+    sessionStatuses: {},
     error: "",
   };
 }

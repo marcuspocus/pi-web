@@ -1,15 +1,21 @@
-import { api, type CommandResult, type SessionInfo } from "../api";
+import { api, type CommandResult, type SessionInfo, type SessionStatus } from "../api";
 import { appendText, normalizeMessages, textMessage } from "../chatMessages";
-import { SessionSocket, type SessionUiEvent } from "../sessionSocket";
+import { GlobalSessionSocket, SessionSocket, type SessionUiEvent } from "../sessionSocket";
 import type { GetState, SetState, UpdateUrl } from "./types";
 
 export class SessionController {
   private readonly socket = new SessionSocket();
+  private readonly globalSocket = new GlobalSessionSocket();
 
   constructor(private readonly getState: GetState, private readonly setState: SetState, private readonly updateUrl: UpdateUrl) {}
 
+  connectStatusUpdates() {
+    this.globalSocket.connect((event) => this.applyStatus(event.status));
+  }
+
   dispose() {
     this.socket.close();
+    this.globalSocket.close();
   }
 
   clearActiveSession() {
@@ -32,8 +38,13 @@ export class SessionController {
   async selectSession(session: SessionInfo, options?: { updateUrl?: boolean }) {
     this.socket.close();
     try {
-      this.setState({ selectedSession: session, messages: normalizeMessages(await api.messages(session.id)), status: await api.status(session.id) });
-      this.socket.connect(session.id, (event) => this.applyEvent(event));
+      const buffered: SessionUiEvent[] = [];
+      this.socket.connect(session.id, (event) => buffered.push(event));
+      const [messages, status] = await Promise.all([api.messages(session.id), api.status(session.id)]);
+      this.setState({ selectedSession: session, messages: normalizeMessages(messages), status });
+      this.applyStatus(status);
+      for (const event of buffered) this.applyEvent(event);
+      this.socket.setHandler((event) => this.applyEvent(event));
       if (options?.updateUrl !== false) this.updateUrl();
     } catch (error) {
       this.setState({ error: String(error) });
@@ -104,6 +115,13 @@ export class SessionController {
     }
   }
 
+  private applyStatus(status: SessionStatus) {
+    this.setState({
+      sessionStatuses: { ...this.getState().sessionStatuses, [status.sessionId]: status },
+      status: this.getState().selectedSession?.id === status.sessionId ? status : this.getState().status,
+    });
+  }
+
   private applyEvent(event: SessionUiEvent) {
     const messages = this.getState().messages;
     if (event.type === "assistant.delta") {
@@ -113,7 +131,7 @@ export class SessionController {
     } else if (event.type === "tool.end") {
       this.setState({ messages: [...messages, textMessage("tool", `${event.isError ? "✖" : "✓"} ${event.toolName}`)] });
     } else if (event.type === "status.update") {
-      this.setState({ status: event.status });
+      this.applyStatus(event.status);
     } else if (event.type === "session.error") {
       this.setState({ messages: [...messages, textMessage("system", event.message)] });
     }

@@ -113,6 +113,10 @@ app.get<{ Params: { sessionId: string } }>("/api/sessions/:sessionId/events", { 
   eventHub.add(request.params.sessionId, socket);
 });
 
+app.get("/api/sessions/events", { websocket: true }, (socket) => {
+  eventHub.addGlobal(socket);
+});
+
 app.get<{ Querystring: { cwd?: string; q?: string; kind?: "tracked" | "untracked" | "other" } }>("/api/files", async (request, reply) => {
   if (!request.query.cwd) return reply.code(400).send({ error: "cwd query parameter is required" });
   try {

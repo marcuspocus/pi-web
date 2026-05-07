@@ -135,7 +135,7 @@ export class PiSessionService {
     this.bindRuntime(active);
     runtime.setRebindSession(async () => this.bindRuntime(active));
     this.active.set(runtime.session.sessionId, active);
-    this.events.publish(runtime.session.sessionId, { type: "status.update", status: this.statusFromSession(runtime.session) });
+    this.publishStatus(runtime.session);
     return active;
   }
 
@@ -147,9 +147,15 @@ export class PiSessionService {
     const { session } = active.runtime;
     active.unsubscribe = session.subscribe((event) => {
       this.events.publish(session.sessionId, toClientEvent(event));
-      this.events.publish(session.sessionId, { type: "status.update", status: this.statusFromSession(session) });
+      this.publishStatus(session);
     });
     this.active.set(session.sessionId, active);
+  }
+
+  private publishStatus(session: AgentSession): void {
+    const status = this.statusFromSession(session);
+    this.events.publish(session.sessionId, { type: "status.update", status });
+    this.events.publishGlobal({ type: "status.update", status });
   }
 
   private statusFromSession(session: AgentSession): ClientSessionStatus {
