@@ -20,6 +20,7 @@ export async function registerSessionProxyRoutes(app: FastifyInstance, daemon = 
   app.get<{ Params: { sessionId: string } }>("/api/sessions/:sessionId/status", (request, reply) => proxy(request, reply));
   app.get<{ Params: { sessionId: string } }>("/api/sessions/:sessionId/commands", (request, reply) => proxy(request, reply));
   app.post<{ Params: { sessionId: string }; Body: { text: string } }>("/api/sessions/:sessionId/prompt", (request, reply) => proxy(request, reply));
+  app.post<{ Params: { sessionId: string }; Body: { text: string } }>("/api/sessions/:sessionId/shell", (request, reply) => proxy(request, reply));
   app.post<{ Params: { sessionId: string }; Body: { text: string } }>("/api/sessions/:sessionId/commands/run", (request, reply) => proxy(request, reply));
   app.post<{ Params: { sessionId: string }; Body: { requestId: string; value: string } }>("/api/sessions/:sessionId/commands/respond", (request, reply) => proxy(request, reply));
   app.post<{ Params: { sessionId: string } }>("/api/sessions/:sessionId/abort", (request, reply) => proxy(request, reply));

@@ -101,6 +101,40 @@ export class PiSessionService {
     });
   }
 
+  async shell(sessionId: string, text: string): Promise<void> {
+    const active = await this.getActive(sessionId);
+    const { session } = active.runtime;
+    const isExcluded = text.startsWith("!!");
+    const command = (isExcluded ? text.slice(2) : text.slice(1)).trim();
+    if (!command) throw new Error("Usage: !<shell command>");
+    if (session.isBashRunning) throw new Error("A bash command is already running");
+
+    this.publishActivity(session, "running bash", "active", command);
+    this.events.publish(session.sessionId, { type: "shell.start", command, excludeFromContext: isExcluded });
+    void session.executeBash(command, (chunk) => {
+      this.events.publish(session.sessionId, { type: "shell.chunk", chunk });
+      this.publishActivity(session, "running bash", "active", command);
+      this.publishStatus(session);
+    }, { excludeFromContext: isExcluded }).then((result) => {
+      this.events.publish(session.sessionId, {
+        type: "shell.end",
+        output: result.output,
+        exitCode: result.exitCode,
+        cancelled: result.cancelled,
+        truncated: result.truncated,
+        fullOutputPath: result.fullOutputPath,
+      });
+      this.publishActivity(session, "bash complete", result.exitCode === 0 ? "idle" : "error", command);
+      this.publishStatus(session);
+    }).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      this.events.publish(session.sessionId, { type: "shell.end", output: message, isError: true });
+      this.events.publish(session.sessionId, { type: "session.error", message });
+      this.publishActivity(session, "bash failed", "error", message);
+      this.publishStatus(session);
+    });
+  }
+
   async runCommand(sessionId: string, text: string): Promise<ClientCommandResult> {
     return this.commandService.run(sessionId, text);
   }

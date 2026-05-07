@@ -8,7 +8,7 @@ export type ChatPart =
   | { type: "empty" };
 
 export interface ChatLine {
-  role: "user" | "assistant" | "tool" | "system";
+  role: "user" | "assistant" | "tool" | "system" | "bash";
   parts: ChatPart[];
 }
 
@@ -55,6 +55,7 @@ export const chatStyles = css`
   .msg.user { border-color: #2f81f7; background: #0d2847; }
   .msg.tool { border-color: #6e5200; background: #1f1a10; color: #d29922; }
   .msg.system { color: #ff7b72; }
+  .msg.bash { border-color: #3fb950; background: #0f1b12; }
   .msg.event-group { padding: 0; border-color: #30363d; background: #0d1117; color: #8b949e; }
   .msg.event-group > summary { display: flex; align-items: center; gap: 8px; padding: 8px 12px; color: #8b949e; }
   .msg.event-group > summary .label { margin: 0; }
@@ -62,6 +63,7 @@ export const chatStyles = css`
   .group-msg { padding: 10px 0; border-top: 1px solid #21262d; color: #e6edf3; }
   .group-msg.tool { color: #d29922; }
   .group-msg.system { color: #ff7b72; }
+  .group-msg.bash { color: #3fb950; }
   .label { display: block; margin-bottom: 8px; color: #8b949e; font-size: 12px; text-transform: uppercase; }
   formatted-text.part { display: block; }
   .part + .part { margin-top: 10px; }
@@ -134,8 +136,11 @@ export const commandPickerStyles = css`
 export const promptEditorStyles = css`
   :host { display: block; color: #e6edf3; font: 14px system-ui, sans-serif; }
   footer { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; padding: 12px; border-top: 1px solid #30363d; }
+  footer.shell-mode { border-top-color: #3fb950; background: #0f1b12; }
   .editor-wrap { position: relative; min-width: 0; }
-  textarea { box-sizing: border-box; width: 100%; min-height: 54px; resize: vertical; border-radius: 8px; border: 1px solid #30363d; background: #0d1117; color: #e6edf3; padding: 8px; }
+  textarea { box-sizing: border-box; width: 100%; min-height: 54px; max-height: 220px; resize: none; overflow-y: auto; border-radius: 8px; border: 1px solid #30363d; background: #0d1117; color: #e6edf3; padding: 8px; }
+  .shell-mode textarea { border-color: #3fb950; box-shadow: 0 0 0 1px #3fb95055; }
+  .mode-hint { position: absolute; right: 8px; bottom: 8px; max-width: calc(100% - 16px); border: 1px solid #238636; border-radius: 999px; background: #0f2a16; color: #3fb950; padding: 2px 8px; font-size: 12px; pointer-events: none; }
   button { border: 1px solid #30363d; border-radius: 8px; background: #161b22; color: #e6edf3; padding: 7px 9px; cursor: pointer; }
   button:disabled, textarea:disabled { opacity: .5; cursor: not-allowed; }
 `;

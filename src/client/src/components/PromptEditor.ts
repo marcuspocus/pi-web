@@ -26,9 +26,14 @@ export class PromptEditor extends LitElement {
     this.selectedIndex = 0;
   }
 
+  protected updated(changed: PropertyValues) {
+    if (changed.has("draft") || changed.has("sessionId")) this.resizeTextarea();
+  }
+
   render() {
+    const shellMode = this.isShellMode();
     return html`
-      <footer>
+      <footer class=${shellMode ? "shell-mode" : ""}>
         <div class="editor-wrap">
           <textarea
             .value=${this.draft}
@@ -37,6 +42,7 @@ export class PromptEditor extends LitElement {
             @keydown=${(event: KeyboardEvent) => this.handleKeyDown(event)}
             placeholder="Message pi... Use / for commands, @ for files"
           ></textarea>
+          ${shellMode ? html`<div class="mode-hint">Shell command${this.isShellExcludedFromContext() ? " · excluded from context" : ""}</div>` : null}
           <autocomplete-menu .items=${this.completions} .selectedIndex=${this.selectedIndex} .onPick=${(item: CompletionItem) => this.pick(item)}></autocomplete-menu>
         </div>
         <button ?disabled=${this.disabled} @click=${this.send}>Send</button>
@@ -47,6 +53,21 @@ export class PromptEditor extends LitElement {
 
   focusInput() {
     this.textarea?.focus();
+  }
+
+  private resizeTextarea() {
+    const textarea = this.textarea;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  }
+
+  private isShellMode(): boolean {
+    return this.draft.trimStart().startsWith("!");
+  }
+
+  private isShellExcludedFromContext(): boolean {
+    return this.draft.trimStart().startsWith("!!");
   }
 
   private updateDraft(value: string) {

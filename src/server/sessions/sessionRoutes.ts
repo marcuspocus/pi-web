@@ -49,6 +49,15 @@ export async function registerSessionRoutes(app: FastifyInstance, sessions: PiSe
     }
   });
 
+  app.post<{ Params: { sessionId: string }; Body: { text: string } }>(`${prefix}/sessions/:sessionId/shell`, async (request, reply) => {
+    try {
+      await sessions.shell(request.params.sessionId, request.body.text);
+      return { accepted: true };
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
   app.post<{ Params: { sessionId: string }; Body: { text: string } }>(`${prefix}/sessions/:sessionId/commands/run`, async (request, reply) => {
     try {
       return await sessions.runCommand(request.params.sessionId, request.body.text);

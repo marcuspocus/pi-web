@@ -92,6 +92,7 @@ export const api = {
   commands: (sessionId: string) => request<SlashCommand[]>(`/api/sessions/${sessionId}/commands`),
   files: (cwd: string, query: string, kind?: FileSuggestion["kind"]) => request<FileSuggestion[]>(`/api/files?cwd=${encodeURIComponent(cwd)}&q=${encodeURIComponent(query)}${kind ? `&kind=${encodeURIComponent(kind)}` : ""}`),
   prompt: (sessionId: string, text: string) => request<{ accepted: true }>(`/api/sessions/${sessionId}/prompt`, { method: "POST", body: JSON.stringify({ text }) }),
+  shell: (sessionId: string, text: string) => request<{ accepted: true }>(`/api/sessions/${sessionId}/shell`, { method: "POST", body: JSON.stringify({ text }) }),
   runCommand: (sessionId: string, text: string) => request<CommandResult>(`/api/sessions/${sessionId}/commands/run`, { method: "POST", body: JSON.stringify({ text }) }),
   respondToCommand: (sessionId: string, requestId: string, value: string) => request<CommandResult>(`/api/sessions/${sessionId}/commands/respond`, { method: "POST", body: JSON.stringify({ requestId, value }) }),
   stop: (sessionId: string) => request<{ stopped: true }>(`/api/sessions/${sessionId}/stop`, { method: "POST" }),

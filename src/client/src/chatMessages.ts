@@ -21,12 +21,24 @@ export function appendText(messages: ChatLine[], role: ChatLine["role"], text: s
 }
 
 function normalizeMessage(message: any): ChatLine[] {
+  if (message?.role === "bashExecution") return [normalizeBashExecution(message)];
   const role = normalizeRole(message?.role);
   const parts = normalizeContent(message?.content, message);
   if (role === "tool") return [{ role, parts }];
 
   const visible = parts.filter((part) => part.type !== "empty");
   return visible.length ? [{ role, parts: visible }] : [];
+}
+
+function normalizeBashExecution(message: any): ChatLine {
+  const lines = [`$ ${message.command ?? ""}`];
+  if (message.output) lines.push("", String(message.output));
+  if (message.exitCode != null) lines.push("", `exit ${message.exitCode}`);
+  if (message.cancelled) lines.push("", "cancelled");
+  if (message.truncated) lines.push("", "output truncated");
+  if (message.fullOutputPath) lines.push("", `full output: ${message.fullOutputPath}`);
+  if (message.excludeFromContext) lines.push("", "excluded from context");
+  return { role: "bash", parts: [{ type: "text", text: lines.join("\n") }] };
 }
 
 function normalizeRole(role: unknown): ChatLine["role"] {

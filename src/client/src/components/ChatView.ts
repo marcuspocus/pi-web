@@ -95,7 +95,7 @@ export class ChatView extends LitElement {
   }
 
   private isReadablePart(message: ChatLine, part: ChatPart): boolean {
-    return part.type === "text" && (message.role === "user" || message.role === "assistant" || message.role === "system");
+    return part.type === "text" && (message.role === "user" || message.role === "assistant" || message.role === "system" || message.role === "bash");
   }
 
   private groupSummary(messages: ChatLine[]): string {
