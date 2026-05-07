@@ -1,5 +1,5 @@
 import { LitElement, html } from "lit";
-import { customElement, state } from "lit/decorators.js";
+import { customElement, query, state } from "lit/decorators.js";
 import type { Project, SessionInfo, Workspace } from "../api";
 import { initialAppState, type AppState } from "../appState";
 import { ProjectController } from "../controllers/projectController";
@@ -10,6 +10,7 @@ import "./ProjectList";
 import "./WorkspaceList";
 import "./SessionList";
 import "./ChatView";
+import type { ChatView } from "./ChatView";
 import "./PromptEditor";
 import "./StatusBar";
 import "./CommandPicker";
@@ -18,6 +19,7 @@ import { appStyles } from "./shared";
 @customElement("pi-web-poc")
 export class PiWebApp extends LitElement {
   @state() private state: AppState = initialAppState();
+  @query("chat-view") private chatView?: ChatView;
 
   private readonly sessions = new SessionController(
     () => this.state,
@@ -35,7 +37,7 @@ export class PiWebApp extends LitElement {
     (patch) => this.setState(patch),
     this.workspaces,
   );
-  private readonly onPopState = () => void this.restoreRoute(false);
+  private readonly onPopState = () => void this.withChatScrollTransition(() => this.restoreRoute(false));
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -55,7 +57,7 @@ export class PiWebApp extends LitElement {
 
   private async loadProjectsAndRestoreRoute() {
     await this.projects.loadProjects();
-    await this.restoreRoute(false);
+    await this.withChatScrollTransition(() => this.restoreRoute(false));
   }
 
   private async restoreRoute(updateUrl: boolean) {
@@ -64,6 +66,15 @@ export class PiWebApp extends LitElement {
     const project = this.state.projects.find((p) => p.id === route.projectId);
     if (!project) return;
     await this.workspaces.selectProject(project, { workspaceId: route.workspaceId, sessionId: route.sessionId, updateUrl });
+  }
+
+  private async withChatScrollTransition(action: () => Promise<void>) {
+    this.chatView?.saveScrollPosition();
+    await action();
+    await this.updateComplete;
+    await this.chatView?.updateComplete;
+    await nextFrame();
+    this.chatView?.restoreScrollPosition();
   }
 
   private updateUrl() {
@@ -83,9 +94,9 @@ export class PiWebApp extends LitElement {
             <strong>Pi Web POC</strong>
             <button @click=${() => this.projects.addProject()}>+ Project</button>
           </header>
-          <project-list .projects=${state.projects} .selected=${state.selectedProject} .onSelect=${(project: Project) => this.workspaces.selectProject(project)}></project-list>
-          <workspace-list .workspaces=${state.workspaces} .selected=${state.selectedWorkspace} .onSelect=${(workspace: Workspace) => this.workspaces.selectWorkspace(workspace)}></workspace-list>
-          <session-list .sessions=${state.sessions} .selected=${state.selectedSession} .canStart=${!!state.selectedWorkspace} .onStart=${() => this.sessions.startSession()} .onSelect=${(session: SessionInfo) => this.sessions.selectSession(session)}></session-list>
+          <project-list .projects=${state.projects} .selected=${state.selectedProject} .onSelect=${(project: Project) => this.withChatScrollTransition(() => this.workspaces.selectProject(project))}></project-list>
+          <workspace-list .workspaces=${state.workspaces} .selected=${state.selectedWorkspace} .onSelect=${(workspace: Workspace) => this.withChatScrollTransition(() => this.workspaces.selectWorkspace(workspace))}></workspace-list>
+          <session-list .sessions=${state.sessions} .selected=${state.selectedSession} .canStart=${!!state.selectedWorkspace} .onStart=${() => this.withChatScrollTransition(() => this.sessions.startSession())} .onSelect=${(session: SessionInfo) => this.withChatScrollTransition(() => this.sessions.selectSession(session))}></session-list>
         </aside>
         <main>
           ${state.error ? html`<div class="error">${state.error}</div>` : null}
@@ -101,4 +112,8 @@ export class PiWebApp extends LitElement {
   }
 
   static styles = appStyles;
+}
+
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }

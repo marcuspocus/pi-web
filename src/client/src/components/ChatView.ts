@@ -10,28 +10,21 @@ export class ChatView extends LitElement {
   @property() sessionId = "";
   @query(".chat") private chat?: HTMLDivElement;
   @state() private pinnedToBottom = true;
-  private restoreAfterUpdate = true;
   private suppressScrollSave = false;
+  private saveScrollTimer?: number;
 
-  protected willUpdate(changed: Map<string, unknown>): void {
-    if (changed.has("sessionId")) {
-      const previousSessionId = changed.get("sessionId");
-      if (typeof previousSessionId === "string" && previousSessionId) this.saveScrollPosition(previousSessionId);
-      this.suppressScrollSave = true;
-      this.pinnedToBottom = true;
-      this.restoreAfterUpdate = true;
-      return;
-    }
+  disconnectedCallback(): void {
+    window.clearTimeout(this.saveScrollTimer);
+    super.disconnectedCallback();
+  }
+
+  protected willUpdate(): void {
     this.pinnedToBottom = this.isNearBottom();
   }
 
-  protected updated(): void {
-    if (this.restoreAfterUpdate) {
-      this.restoreAfterUpdate = false;
-      this.restoreScrollPosition();
-    } else if (this.pinnedToBottom) {
-      this.scrollToBottom();
-    }
+  protected updated(changed: Map<string, unknown>): void {
+    if (changed.has("sessionId")) return;
+    if (changed.has("messages") && this.pinnedToBottom) this.scrollToBottom();
   }
 
   render() {
@@ -62,7 +55,7 @@ export class ChatView extends LitElement {
 
   private onScroll() {
     this.pinnedToBottom = this.isNearBottom();
-    if (!this.suppressScrollSave) this.saveScrollPosition();
+    if (!this.suppressScrollSave) this.scheduleScrollPositionSave();
   }
 
   private isNearBottom(): boolean {
@@ -81,7 +74,7 @@ export class ChatView extends LitElement {
     });
   }
 
-  private restoreScrollPosition() {
+  restoreScrollPosition() {
     requestAnimationFrame(() => {
       const chat = this.chat;
       const stored = this.readStoredScrollPosition();
@@ -107,7 +100,7 @@ export class ChatView extends LitElement {
     });
   }
 
-  private saveScrollPosition(sessionId = this.sessionId) {
+  saveScrollPosition(sessionId = this.sessionId) {
     const chat = this.chat;
     if (!chat || !sessionId) return;
     try {
@@ -129,6 +122,11 @@ export class ChatView extends LitElement {
     } catch {
       // Ignore storage failures; scrolling should keep working without persistence.
     }
+  }
+
+  private scheduleScrollPositionSave() {
+    window.clearTimeout(this.saveScrollTimer);
+    this.saveScrollTimer = window.setTimeout(() => this.saveScrollPosition(), 180);
   }
 
   private readStoredScrollPosition(): { index: number; offset: number } | undefined {
