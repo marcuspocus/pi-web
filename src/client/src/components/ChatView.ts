@@ -1,5 +1,6 @@
 import { LitElement, html } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
+import { groupChatMessages, summarizeChatGroup } from "../chatGroups";
 import type { ChatLine, ChatPart } from "./shared";
 import { chatStyles } from "./shared";
 import "./FormattedText";
@@ -30,7 +31,7 @@ export class ChatView extends LitElement {
   render() {
     return html`
       <div class="chat" @scroll=${this.onScroll}>
-        ${this.groupedMessages().map((group) => group.kind === "message"
+        ${groupChatMessages(this.messages).map((group) => group.kind === "message"
           ? this.renderMessage(group.message, group.index)
           : this.renderMessageGroup(group.messages, group.startIndex))}
       </div>
@@ -51,7 +52,7 @@ export class ChatView extends LitElement {
       <details class="msg event-group" data-index=${startIndex}>
         <summary>
           <b class="label">events</b>
-          <span>${this.groupSummary(messages)}</span>
+          <span>${summarizeChatGroup(messages)}</span>
         </summary>
         <div class="group-body">
           ${messages.map((message) => html`
@@ -63,48 +64,6 @@ export class ChatView extends LitElement {
         </div>
       </details>
     `;
-  }
-
-  private groupedMessages(): Array<{ kind: "message"; message: ChatLine; index: number } | { kind: "group"; messages: ChatLine[]; startIndex: number }> {
-    const groups: Array<{ kind: "message"; message: ChatLine; index: number } | { kind: "group"; messages: ChatLine[]; startIndex: number }> = [];
-    let eventMessages: ChatLine[] = [];
-    let eventStartIndex = 0;
-
-    const pushEvent = (message: ChatLine, index: number) => {
-      if (!eventMessages.length) eventStartIndex = index;
-      eventMessages.push(message);
-    };
-    const flushEvents = () => {
-      if (!eventMessages.length) return;
-      groups.push({ kind: "group", messages: eventMessages, startIndex: eventStartIndex });
-      eventMessages = [];
-    };
-
-    this.messages.forEach((message, index) => {
-      const readableParts = message.parts.filter((part) => this.isReadablePart(message, part));
-      const technicalParts = message.parts.filter((part) => !this.isReadablePart(message, part));
-
-      if (technicalParts.length) pushEvent({ role: message.role, parts: technicalParts }, index);
-      if (readableParts.length) {
-        flushEvents();
-        groups.push({ kind: "message", message: { role: message.role, parts: readableParts }, index });
-      }
-    });
-    flushEvents();
-    return groups;
-  }
-
-  private isReadablePart(message: ChatLine, part: ChatPart): boolean {
-    return part.type === "text" && (message.role === "user" || message.role === "assistant" || message.role === "system" || message.role === "bash");
-  }
-
-  private groupSummary(messages: ChatLine[]): string {
-    const counts = messages.reduce<Record<string, number>>((acc, message) => {
-      acc[message.role] = (acc[message.role] ?? 0) + 1;
-      return acc;
-    }, {});
-    const details = Object.entries(counts).map(([role, count]) => `${count} ${role}`).join(" · ");
-    return `${messages.length} ${messages.length === 1 ? "event" : "events"}${details ? ` · ${details}` : ""}`;
   }
 
   private renderPart(part: ChatPart) {
