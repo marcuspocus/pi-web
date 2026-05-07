@@ -1,0 +1,56 @@
+import type { FastifyInstance, FastifyReply } from "fastify";
+import { WebSocket, type RawData } from "ws";
+import { SessionDaemonClient } from "./sessionDaemonClient.js";
+
+export async function registerSessionProxyRoutes(app: FastifyInstance, daemon = new SessionDaemonClient()): Promise<void> {
+  const proxy = async (request: { method: string; url: string; body?: unknown }, reply: FastifyReply) => {
+    try {
+      const upstream = await daemon.request(request.method, stripApiPrefix(request.url), request.body);
+      reply.code(upstream.statusCode);
+      if (upstream.headers["content-type"]) reply.header("content-type", upstream.headers["content-type"]);
+      return upstream.body ? JSON.parse(upstream.body) : undefined;
+    } catch (error) {
+      requestFailed(reply, error);
+    }
+  };
+
+  app.get<{ Querystring: { cwd?: string } }>("/api/sessions", (request, reply) => proxy(request, reply));
+  app.post<{ Body: { cwd: string } }>("/api/sessions", (request, reply) => proxy(request, reply));
+  app.get<{ Params: { sessionId: string } }>("/api/sessions/:sessionId/messages", (request, reply) => proxy(request, reply));
+  app.get<{ Params: { sessionId: string } }>("/api/sessions/:sessionId/status", (request, reply) => proxy(request, reply));
+  app.get<{ Params: { sessionId: string } }>("/api/sessions/:sessionId/commands", (request, reply) => proxy(request, reply));
+  app.post<{ Params: { sessionId: string }; Body: { text: string } }>("/api/sessions/:sessionId/prompt", (request, reply) => proxy(request, reply));
+  app.post<{ Params: { sessionId: string }; Body: { text: string } }>("/api/sessions/:sessionId/commands/run", (request, reply) => proxy(request, reply));
+  app.post<{ Params: { sessionId: string }; Body: { requestId: string; value: string } }>("/api/sessions/:sessionId/commands/respond", (request, reply) => proxy(request, reply));
+  app.post<{ Params: { sessionId: string } }>("/api/sessions/:sessionId/abort", (request, reply) => proxy(request, reply));
+  app.post<{ Params: { sessionId: string } }>("/api/sessions/:sessionId/stop", (request, reply) => proxy(request, reply));
+
+  app.get<{ Params: { sessionId: string } }>("/api/sessions/:sessionId/events", { websocket: true }, (socket, request) => {
+    bridgeSockets(socket, daemon.connectWebSocket(`/sessions/${request.params.sessionId}/events`));
+  });
+
+  app.get("/api/sessions/events", { websocket: true }, (socket) => {
+    bridgeSockets(socket, daemon.connectWebSocket("/sessions/events"));
+  });
+}
+
+function stripApiPrefix(url: string): string {
+  return url.startsWith("/api") ? url.slice(4) || "/" : url;
+}
+
+function requestFailed(reply: FastifyReply, error: unknown) {
+  reply.code(502).send({ error: `Session daemon unavailable: ${error instanceof Error ? error.message : String(error)}` });
+}
+
+function bridgeSockets(client: WebSocket, upstream: WebSocket): void {
+  client.on("message", (data) => sendIfOpen(upstream, data));
+  upstream.on("message", (data) => sendIfOpen(client, data));
+  client.on("close", () => upstream.close());
+  upstream.on("close", () => client.close());
+  upstream.on("error", () => client.close());
+  client.on("error", () => upstream.close());
+}
+
+function sendIfOpen(socket: WebSocket, data: RawData): void {
+  if (socket.readyState === WebSocket.OPEN) socket.send(data);
+}

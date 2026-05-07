@@ -6,17 +6,14 @@ import fastifyWebsocket from "@fastify/websocket";
 import { ProjectStore } from "./storage/projectStore.js";
 import { ProjectService } from "./projects/projectService.js";
 import { WorkspaceService } from "./workspaces/workspaceService.js";
-import { SessionEventHub } from "./realtime/sessionEventHub.js";
-import { PiSessionService } from "./sessions/piSessionService.js";
 import { listFileSuggestions } from "./workspaces/fileSuggestions.js";
+import { registerSessionProxyRoutes } from "./sessiond/sessionProxyRoutes.js";
 
 const app = Fastify({ logger: true });
 await app.register(fastifyWebsocket);
 
 const projects = new ProjectService(new ProjectStore());
 const workspaces = new WorkspaceService();
-const eventHub = new SessionEventHub();
-const sessions = new PiSessionService(eventHub);
 
 app.get("/api/projects", async () => projects.list());
 
@@ -37,85 +34,7 @@ app.get<{ Params: { projectId: string } }>("/api/projects/:projectId/workspaces"
   }
 });
 
-app.get<{ Querystring: { cwd?: string } }>("/api/sessions", async (request, reply) => {
-  if (!request.query.cwd) return reply.code(400).send({ error: "cwd query parameter is required" });
-  return sessions.list(request.query.cwd);
-});
-
-app.post<{ Body: { cwd: string } }>("/api/sessions", async (request, reply) => {
-  try {
-    return await sessions.start(request.body.cwd);
-  } catch (error) {
-    return reply.code(400).send({ error: error instanceof Error ? error.message : String(error) });
-  }
-});
-
-app.get<{ Params: { sessionId: string } }>("/api/sessions/:sessionId/messages", async (request, reply) => {
-  try {
-    return await sessions.messages(request.params.sessionId);
-  } catch (error) {
-    return reply.code(404).send({ error: error instanceof Error ? error.message : String(error) });
-  }
-});
-
-app.get<{ Params: { sessionId: string } }>("/api/sessions/:sessionId/status", async (request, reply) => {
-  try {
-    return await sessions.status(request.params.sessionId);
-  } catch (error) {
-    return reply.code(404).send({ error: error instanceof Error ? error.message : String(error) });
-  }
-});
-
-app.get<{ Params: { sessionId: string } }>("/api/sessions/:sessionId/commands", async (request, reply) => {
-  try {
-    return await sessions.commands(request.params.sessionId);
-  } catch (error) {
-    return reply.code(404).send({ error: error instanceof Error ? error.message : String(error) });
-  }
-});
-
-app.post<{ Params: { sessionId: string }; Body: { text: string } }>("/api/sessions/:sessionId/prompt", async (request, reply) => {
-  try {
-    await sessions.prompt(request.params.sessionId, request.body.text);
-    return { accepted: true };
-  } catch (error) {
-    return reply.code(400).send({ error: error instanceof Error ? error.message : String(error) });
-  }
-});
-
-app.post<{ Params: { sessionId: string }; Body: { text: string } }>("/api/sessions/:sessionId/commands/run", async (request, reply) => {
-  try {
-    return await sessions.runCommand(request.params.sessionId, request.body.text);
-  } catch (error) {
-    return reply.code(400).send({ error: error instanceof Error ? error.message : String(error) });
-  }
-});
-
-app.post<{ Params: { sessionId: string }; Body: { requestId: string; value: string } }>("/api/sessions/:sessionId/commands/respond", async (request, reply) => {
-  try {
-    return await sessions.respondToCommand(request.params.sessionId, request.body.requestId, request.body.value);
-  } catch (error) {
-    return reply.code(400).send({ error: error instanceof Error ? error.message : String(error) });
-  }
-});
-
-app.post<{ Params: { sessionId: string } }>("/api/sessions/:sessionId/abort", async (request) => {
-  await sessions.abort(request.params.sessionId);
-  return { aborted: true };
-});
-
-app.post<{ Params: { sessionId: string } }>("/api/sessions/:sessionId/stop", async (request) => {
-  sessions.stop(request.params.sessionId);
-  return { stopped: true };
-});
-
-app.get<{ Params: { sessionId: string } }>("/api/sessions/:sessionId/events", { websocket: true }, (socket, request) => {
-  eventHub.add(request.params.sessionId, socket);
-});
-
-app.get("/api/sessions/events", { websocket: true }, (socket) => {
-  eventHub.addGlobal(socket);
-});
+await registerSessionProxyRoutes(app);
 
 app.get<{ Querystring: { cwd?: string; q?: string; kind?: "tracked" | "untracked" | "other" } }>("/api/files", async (request, reply) => {
   if (!request.query.cwd) return reply.code(400).send({ error: "cwd query parameter is required" });
