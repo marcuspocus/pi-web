@@ -71,9 +71,10 @@ export const workspacePanelStyles = css`
   .row:hover, .row.selected { background: #0d2847; }
   .row span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .summary { margin: 4px 6px 8px; color: #8b949e; }
-  .viewer { min-height: 0; overflow: auto; }
+  .viewer { min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
   .viewer-header { position: sticky; top: 0; display: flex; justify-content: space-between; gap: 8px; padding: 8px; border-bottom: 1px solid #21262d; background: #0d1117; }
   .viewer-header strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  code-viewer { flex: 1 1 auto; min-height: 0; }
   pre { margin: 0; padding: 10px; overflow: auto; font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
   p { margin: 10px; }
 `;

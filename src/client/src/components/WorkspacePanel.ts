@@ -2,6 +2,7 @@ import { LitElement, html, type TemplateResult } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import type { FileContentResponse, FileTreeEntry, GitDiffResponse, GitStatusResponse, Workspace } from "../api";
 import { workspacePanelStyles } from "./shared";
+import "./CodeViewer";
 
 @customElement("workspace-panel")
 export class WorkspacePanel extends LitElement {
@@ -73,7 +74,7 @@ export class WorkspacePanel extends LitElement {
     if (file.binary) return html`<p class="muted">Binary file: ${file.path}</p>`;
     return html`
       <div class="viewer-header"><strong>${file.path}</strong><small>${file.language ?? "text"}${file.truncated ? " · truncated" : ""}</small></div>
-      <pre><code>${file.content}</code></pre>
+      <code-viewer .content=${file.content} .language=${file.language}></code-viewer>
     `;
   }
 
@@ -110,7 +111,7 @@ export class WorkspacePanel extends LitElement {
     if (!diff) return html`<p class="muted">Loading diff…</p>`;
     return html`
       <div class="viewer-header"><strong>${diff.path ?? "diff"}</strong><small>${diff.staged ? "staged" : "unstaged"}${diff.truncated ? " · truncated" : ""}</small></div>
-      <pre><code>${diff.diff || "No unstaged diff."}</code></pre>
+      <code-viewer .content=${diff.diff || "No unstaged diff."}></code-viewer>
     `;
   }
 
