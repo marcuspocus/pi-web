@@ -85,7 +85,48 @@ Pi Web keeps its own state intentionally small:
 - Sessions and chat history: Pi's default JSONL session storage
 - Active session runtimes and WebSockets: memory in the session daemon
 
-## Quick start
+## Install
+
+Recommended install uses npm plus systemd user services:
+
+```bash
+npm install -g pi-web
+pi-web install
+```
+
+This writes and starts:
+
+- `~/.config/systemd/user/pi-web-sessiond.service`
+- `~/.config/systemd/user/pi-web.service`
+
+The generated services run through `bash -lc` so they see a shell environment similar to running `pi` from your terminal.
+
+Open <http://127.0.0.1:3000>.
+
+Useful commands:
+
+```bash
+pi-web status
+pi-web logs
+pi-web restart
+pi-web doctor
+pi-web uninstall
+```
+
+One-line install is also available for users who prefer it:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/earendil-works/pi-web/main/install.sh | sh
+```
+
+Advanced users may run the binaries however they prefer:
+
+```bash
+pi-web-sessiond
+PI_WEB_PORT=3000 pi-web-server
+```
+
+## Development quick start
 
 ```bash
 npm install
@@ -104,7 +145,7 @@ npm run dev:client
 
 You can restart `dev:web` or `dev:client` without stopping active Pi sessions.
 
-## Production-style run
+## Production-style run from a checkout
 
 ```bash
 npm run build

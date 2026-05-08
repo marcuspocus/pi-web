@@ -1,15 +1,26 @@
 {
-  "name": "pi-web-poc",
+  "name": "pi-web",
   "version": "0.0.1",
   "license": "MIT",
   "type": "module",
+  "bin": {
+    "pi-web": "./dist/cli.js",
+    "pi-web-server": "./dist/server/index.js",
+    "pi-web-sessiond": "./dist/server/sessiond.js"
+  },
+  "files": [
+    "dist",
+    "install.sh",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "dev": "bash -c 'trap \"kill 0\" EXIT; npm run dev:sessiond & npm run dev:web & npm run dev:client & wait'",
     "dev:sessiond": "tsx watch src/server/sessiond.ts",
     "dev:web": "tsx watch src/server/index.ts",
     "dev:server": "npm run dev:web",
     "dev:client": "vite --host 0.0.0.0",
-    "build": "tsc && vite build",
+    "build": "tsc -p tsconfig.build.json && vite build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint \"src/**/*.ts\" vite.config.ts vitest.config.ts",
     "test": "vitest run --config vitest.config.ts",

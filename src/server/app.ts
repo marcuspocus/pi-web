@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from "fastify";
 import fastifyStatic from "@fastify/static";
 import fastifyWebsocket from "@fastify/websocket";
@@ -78,7 +79,8 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
     }
   });
 
-  const clientDist = deps.clientDist ?? join(process.cwd(), "dist", "client");
+  const packagedClientDist = join(dirname(fileURLToPath(import.meta.url)), "..", "client");
+  const clientDist = deps.clientDist ?? (existsSync(packagedClientDist) ? packagedClientDist : join(process.cwd(), "dist", "client"));
   if (clientDist !== false && existsSync(clientDist)) {
     await app.register(fastifyStatic, { root: clientDist });
     app.setNotFoundHandler((_request, reply) => reply.sendFile("index.html"));
