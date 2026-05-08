@@ -6,6 +6,7 @@ import { readChatHistoryCache, mergeChatHistory, writeChatHistoryCache, type Raw
 import { applyTranscriptEvent } from "../chatTranscript";
 import { isShellInput } from "../inputModes";
 import { GlobalSessionSocket, SessionSocket, type SessionUiEvent } from "../sessionSocket";
+import { markSessionArchived, selectionAfterArchivingSession } from "./sessionSelection";
 import type { GetState, SetState, UpdateUrl } from "./types";
 
 export class SessionController {
@@ -158,10 +159,15 @@ export class SessionController {
     if (!session) return;
     try {
       await api.archive(session.id);
-      this.replaceSession({ ...session, archived: true, archivedAt: new Date().toISOString() });
-      if (this.getState().selectedSession?.id === session.id) {
-        this.socket.close();
-        this.setState({ status: undefined, activity: undefined });
+      const state = this.getState();
+      const sessions = markSessionArchived(state.sessions, session.id, new Date().toISOString());
+      const selectionChange = selectionAfterArchivingSession(sessions, state.selectedSession?.id, session.id);
+      this.setState({ sessions });
+
+      if (selectionChange.type === "select") await this.selectSession(selectionChange.session);
+      else if (selectionChange.type === "clear") {
+        this.clearActiveSession();
+        this.updateUrl();
       }
     } catch (error) {
       this.setState({ error: String(error) });
