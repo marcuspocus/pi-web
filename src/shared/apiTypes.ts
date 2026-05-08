@@ -12,6 +12,7 @@ export interface Workspace {
   label: string;
   branch?: string;
   isMain: boolean;
+  isGitRepo: boolean;
   isGitWorktree: boolean;
 }
 

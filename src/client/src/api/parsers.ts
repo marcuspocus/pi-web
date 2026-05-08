@@ -67,6 +67,7 @@ export function parseWorkspace(value: unknown): Workspace {
     label: requireString(record, "label"),
     ...(branch === undefined ? {} : { branch }),
     isMain: requireBoolean(record, "isMain"),
+    isGitRepo: requireBoolean(record, "isGitRepo"),
     isGitWorktree: requireBoolean(record, "isGitWorktree"),
   };
 }

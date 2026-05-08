@@ -15,6 +15,7 @@ export function createCoreWorkspacePanels(): WorkspacePanelContribution[] {
       id: "workspace.git",
       title: "Git",
       order: 20,
+      visible: (workspace) => workspace.isGitRepo,
       render: renderGit,
     },
   ];

@@ -9,7 +9,7 @@ import { ProjectController } from "../controllers/projectController";
 import { SessionController } from "../controllers/sessionController";
 import { WorkspaceController } from "../controllers/workspaceController";
 import { KeyboardShortcutDispatcher } from "../keyboardShortcuts";
-import type { QualifiedContributionId, PluginRuntimeContext } from "../plugins/types";
+import type { QualifiedContributionId, QualifiedWorkspacePanelContribution, PluginRuntimeContext } from "../plugins/types";
 import { corePlugin } from "../plugins/core";
 import { examplePlugin } from "../plugins/example";
 import { PluginRegistry } from "../plugins/registry";
@@ -179,7 +179,12 @@ export class PiWebApp extends LitElement {
   }
 
   private renderWorkspacePanel() {
-    return html`<workspace-panel .workspace=${this.state.selectedWorkspace} .tool=${this.state.workspaceTool} .panels=${this.plugins.getWorkspacePanels()} .fileTree=${this.state.fileTree} .expandedDirs=${this.state.expandedDirs} .selectedFilePath=${this.state.selectedFilePath} .selectedFileContent=${this.state.selectedFileContent} .fileTreeStale=${this.state.fileTreeStale} .gitStatus=${this.state.gitStatus} .selectedDiffPath=${this.state.selectedDiffPath} .selectedDiff=${this.state.selectedDiff} .selectedStagedDiff=${this.state.selectedStagedDiff} .gitStale=${this.state.gitStale} .onSelectTool=${(tool: QualifiedContributionId) => { this.selectWorkspaceTool(tool); }} .onRefreshFiles=${() => this.files.refreshFiles()} .onExpandDir=${(path: string) => this.files.expandDir(path)} .onSelectFile=${(path: string) => this.files.selectFile(path)} .onRefreshGit=${() => this.git.refreshGit()} .onSelectDiff=${(path: string) => this.git.selectDiff(path)}></workspace-panel>`;
+    return html`<workspace-panel .workspace=${this.state.selectedWorkspace} .tool=${this.state.workspaceTool} .panels=${this.visibleWorkspacePanels()} .fileTree=${this.state.fileTree} .expandedDirs=${this.state.expandedDirs} .selectedFilePath=${this.state.selectedFilePath} .selectedFileContent=${this.state.selectedFileContent} .fileTreeStale=${this.state.fileTreeStale} .gitStatus=${this.state.gitStatus} .selectedDiffPath=${this.state.selectedDiffPath} .selectedDiff=${this.state.selectedDiff} .selectedStagedDiff=${this.state.selectedStagedDiff} .gitStale=${this.state.gitStale} .onSelectTool=${(tool: QualifiedContributionId) => { this.selectWorkspaceTool(tool); }} .onRefreshFiles=${() => this.files.refreshFiles()} .onExpandDir=${(path: string) => this.files.expandDir(path)} .onSelectFile=${(path: string) => this.files.selectFile(path)} .onRefreshGit=${() => this.git.refreshGit()} .onSelectDiff=${(path: string) => this.git.selectDiff(path)}></workspace-panel>`;
+  }
+
+  private visibleWorkspacePanels(): QualifiedWorkspacePanelContribution[] {
+    const workspace = this.state.selectedWorkspace;
+    return this.plugins.getWorkspacePanels().filter((panel) => workspace === undefined || (panel.visible?.(workspace) ?? true));
   }
 
   private getActions(): AppAction[] {
@@ -223,7 +228,7 @@ export class PiWebApp extends LitElement {
         <main class=${state.mainView === "chat" ? "chat-view" : "workspace-view"}>
           <div class="mobile-tabs">
             <button class=${state.mainView === "chat" ? "selected" : ""} @click=${() => { this.selectMainView("chat"); }}>Chat</button>
-            ${this.plugins.getWorkspacePanels().map((panel) => html`
+            ${this.visibleWorkspacePanels().map((panel) => html`
               <button class=${state.mainView === panel.id ? "selected" : ""} @click=${() => { this.selectMainView(panel.id); }}>${panel.title}</button>
             `)}
           </div>

@@ -75,5 +75,5 @@ describe("PluginRegistry", () => {
 });
 
 function testWorkspace(): AppState["selectedWorkspace"] {
-  return { id: "w1", projectId: "p1", path: "/tmp/project", label: "main", isMain: true, isGitWorktree: false };
+  return { id: "w1", projectId: "p1", path: "/tmp/project", label: "main", isMain: true, isGitRepo: true, isGitWorktree: false };
 }

@@ -45,7 +45,7 @@ export function createCoreActions(): PluginAction[] {
       title: "Go to Git",
       shortcut: "mod+3",
       group: "Navigation",
-      enabled: hasWorkspace,
+      enabled: hasGitWorkspace,
       run: (context) => { context.selectMainView("core:workspace.git"); },
     },
     {
@@ -61,7 +61,7 @@ export function createCoreActions(): PluginAction[] {
       title: "Refresh Git",
       shortcut: "mod+shift+g",
       group: "Workspace",
-      enabled: hasWorkspace,
+      enabled: hasGitWorkspace,
       run: (context) => context.refreshGit(),
     },
     {
@@ -70,7 +70,7 @@ export function createCoreActions(): PluginAction[] {
       shortcut: "mod+shift+r",
       group: "Workspace",
       enabled: hasWorkspace,
-      run: (context) => context.state.workspaceTool === "core:workspace.git" ? context.refreshGit() : context.refreshFiles(),
+      run: (context) => context.state.workspaceTool === "core:workspace.git" && context.state.selectedWorkspace?.isGitRepo === true ? context.refreshGit() : context.refreshFiles(),
     },
     {
       id: "session.start",
@@ -101,6 +101,10 @@ export function createCoreActions(): PluginAction[] {
 
 function hasWorkspace(context: { state: AppState }): boolean {
   return context.state.selectedWorkspace !== undefined;
+}
+
+function hasGitWorkspace(context: { state: AppState }): boolean {
+  return context.state.selectedWorkspace?.isGitRepo === true;
 }
 
 function isActive(status: AppState["status"]): boolean {

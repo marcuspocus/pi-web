@@ -74,6 +74,7 @@ export interface WorkspacePanelContribution {
   id: LocalContributionId;
   title: string;
   order?: number;
+  visible?: (workspace: Workspace) => boolean;
   render: (context: WorkspacePanelContext) => TemplateResult;
 }
 

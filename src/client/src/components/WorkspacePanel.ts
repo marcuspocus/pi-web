@@ -28,11 +28,12 @@ export class WorkspacePanel extends LitElement {
 
   override render() {
     if (!this.workspace) return html`<section class="empty">Select a workspace.</section>`;
-    const selectedPanel = this.panels.find((panel) => panel.id === this.tool) ?? this.panels[0];
+    const visiblePanels = this.panels.filter((panel) => panel.visible?.(this.workspace as Workspace) ?? true);
+    const selectedPanel = visiblePanels.find((panel) => panel.id === this.tool) ?? visiblePanels[0];
     return html`
       <header>
         <div class="tabs">
-          ${this.panels.map((panel) => html`
+          ${visiblePanels.map((panel) => html`
             <button class=${selectedPanel?.id === panel.id ? "selected" : ""} @click=${() => { this.onSelectTool(panel.id); }}>${panel.title}</button>
           `)}
         </div>
