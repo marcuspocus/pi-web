@@ -13,16 +13,26 @@ export async function gitStatus(cwd: string): Promise<GitStatusResponse> {
 
 export async function gitDiff(cwd: string, options: { path?: string; staged?: boolean }): Promise<GitDiffResponse> {
   const staged = options.staged === true;
+  let path: string | undefined;
+  if (options.path !== undefined && options.path !== "") path = normalizeRelativePath(options.path);
+
   const args = ["diff", "--no-ext-diff", "--color=never"];
   if (staged) args.push("--cached");
-  let path: string | undefined;
-  if (options.path !== undefined && options.path !== "") {
-    path = normalizeRelativePath(options.path);
-    args.push("--", path);
-  }
+  if (path !== undefined) args.push("--", path);
+
   const result = await runGit(cwd, args);
   if (result.code !== 0) throw new Error(result.stderr.trim() || "git diff failed");
+  if (!staged && path !== undefined && result.stdout === "" && await isUntracked(cwd, path)) {
+    const untracked = await runGit(cwd, ["diff", "--no-ext-diff", "--color=never", "--no-index", "/dev/null", "--", path]);
+    if (untracked.code !== 0 && untracked.code !== 1) throw new Error(untracked.stderr.trim() || "git diff failed");
+    return { path, staged, hash: hash(untracked.stdout), diff: untracked.stdout, truncated: untracked.truncated };
+  }
   return { ...(path === undefined ? {} : { path }), staged, hash: hash(result.stdout), diff: result.stdout, truncated: result.truncated };
+}
+
+async function isUntracked(cwd: string, path: string): Promise<boolean> {
+  const result = await runGit(cwd, ["ls-files", "--others", "--exclude-standard", "-z", "--", path]);
+  return result.code === 0 && result.stdout.split("\0").includes(path);
 }
 
 function parseStatus(raw: string): GitStatusResponse {

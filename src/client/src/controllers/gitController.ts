@@ -22,7 +22,7 @@ export class GitController {
       if (selectedDiffPath !== undefined) {
         if (status.files.some((file) => file.path === selectedDiffPath)) await this.refreshDiff(selectedDiffPath);
         else {
-          this.setState({ selectedDiffPath: undefined, selectedDiff: undefined });
+          this.setState({ selectedDiffPath: undefined, selectedDiff: undefined, selectedStagedDiff: undefined });
           this.updateUrl();
         }
       }
@@ -32,7 +32,7 @@ export class GitController {
   }
 
   async selectDiff(path: string): Promise<void> {
-    this.setState({ selectedDiffPath: path, selectedDiff: undefined, workspaceTool: "git", mainView: this.getState().mainView === "chat" ? "chat" : "git" });
+    this.setState({ selectedDiffPath: path, selectedDiff: undefined, selectedStagedDiff: undefined, workspaceTool: "git", mainView: this.getState().mainView === "chat" ? "chat" : "git" });
     this.updateUrl();
     await this.refreshDiff(path);
   }
@@ -42,7 +42,11 @@ export class GitController {
     const workspace = this.getState().selectedWorkspace;
     if (project === undefined || workspace === undefined) return;
     try {
-      this.setState({ selectedDiff: await api.gitDiff(project.id, workspace.id, { path }), error: "" });
+      const [selectedDiff, selectedStagedDiff] = await Promise.all([
+        api.gitDiff(project.id, workspace.id, { path }),
+        api.gitDiff(project.id, workspace.id, { path, staged: true }),
+      ]);
+      this.setState({ selectedDiff, selectedStagedDiff, error: "" });
     } catch (error) {
       this.setState({ error: String(error) });
     }

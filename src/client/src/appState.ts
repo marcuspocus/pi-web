@@ -28,6 +28,7 @@ export interface AppState {
   gitStatus: GitStatusResponse | undefined;
   selectedDiffPath: string | undefined;
   selectedDiff: GitDiffResponse | undefined;
+  selectedStagedDiff: GitDiffResponse | undefined;
   gitStale: boolean;
   error: string;
 }
@@ -60,6 +61,7 @@ export function initialAppState(): AppState {
     gitStatus: undefined,
     selectedDiffPath: undefined,
     selectedDiff: undefined,
+    selectedStagedDiff: undefined,
     gitStale: false,
     error: "",
   };

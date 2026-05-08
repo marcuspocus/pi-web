@@ -12,7 +12,7 @@ export class WorkspaceController {
 
   async selectProject(project: Project, target?: RouteTarget) {
     this.sessions.clearActiveSession();
-    this.setState({ selectedProject: project, selectedWorkspace: undefined, sessions: [], workspaces: [], fileTree: [], expandedDirs: {}, selectedFilePath: undefined, selectedFileContent: undefined, fileTreeStale: false, gitStatus: undefined, selectedDiffPath: undefined, selectedDiff: undefined, gitStale: false, error: "" });
+    this.setState({ selectedProject: project, selectedWorkspace: undefined, sessions: [], workspaces: [], fileTree: [], expandedDirs: {}, selectedFilePath: undefined, selectedFileContent: undefined, fileTreeStale: false, gitStatus: undefined, selectedDiffPath: undefined, selectedDiff: undefined, selectedStagedDiff: undefined, gitStale: false, error: "" });
     try {
       const workspaces = await api.workspaces(project.id);
       this.setState({ workspaces });
@@ -26,7 +26,7 @@ export class WorkspaceController {
 
   async selectWorkspace(workspace: Workspace, target?: { sessionId?: string | undefined; updateUrl?: boolean | undefined }) {
     this.sessions.clearActiveSession();
-    this.setState({ selectedWorkspace: workspace, sessions: [], fileTree: [], expandedDirs: {}, selectedFilePath: undefined, selectedFileContent: undefined, fileTreeStale: false, gitStatus: undefined, selectedDiffPath: undefined, selectedDiff: undefined, gitStale: false, error: "" });
+    this.setState({ selectedWorkspace: workspace, sessions: [], fileTree: [], expandedDirs: {}, selectedFilePath: undefined, selectedFileContent: undefined, fileTreeStale: false, gitStatus: undefined, selectedDiffPath: undefined, selectedDiff: undefined, selectedStagedDiff: undefined, gitStale: false, error: "" });
     try {
       const sessions = await api.sessions(workspace.path);
       this.setState({ sessions });

@@ -73,6 +73,10 @@ export const workspacePanelStyles = css`
   .row span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .summary { margin: 4px 6px 8px; color: #8b949e; }
   .viewer { min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+  .diffs { flex: 1 1 auto; min-height: 0; overflow: auto; display: grid; grid-template-rows: minmax(120px, 1fr) minmax(120px, 1fr); }
+  .diffs.single { grid-template-rows: minmax(0, 1fr); }
+  .diff-section { min-height: 0; display: flex; flex-direction: column; border-bottom: 1px solid #30363d; }
+  .diff-section:last-child { border-bottom: 0; }
   .viewer-header { position: sticky; top: 0; display: flex; justify-content: space-between; gap: 8px; padding: 8px; border-bottom: 1px solid #21262d; background: #0d1117; }
   .viewer-header strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   code-viewer { flex: 1 1 auto; min-height: 0; }

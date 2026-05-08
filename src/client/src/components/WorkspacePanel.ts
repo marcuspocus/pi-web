@@ -16,6 +16,7 @@ export class WorkspacePanel extends LitElement {
   @property({ attribute: false }) gitStatus: GitStatusResponse | undefined;
   @property({ attribute: false }) selectedDiffPath: string | undefined;
   @property({ attribute: false }) selectedDiff: GitDiffResponse | undefined;
+  @property({ attribute: false }) selectedStagedDiff: GitDiffResponse | undefined;
   @property({ type: Boolean }) gitStale = false;
   @property({ attribute: false }) onSelectTool: (tool: "files" | "git") => void = () => undefined;
   @property({ attribute: false }) onRefreshFiles: () => void = () => undefined;
@@ -113,11 +114,24 @@ export class WorkspacePanel extends LitElement {
 
   private renderDiffViewer() {
     if (this.selectedDiffPath === undefined || this.selectedDiffPath === "") return html`<p class="muted">Select a changed file.</p>`;
-    const diff = this.selectedDiff;
-    if (diff === undefined) return html`<p class="muted">Loading diff…</p>`;
+    const unstaged = this.selectedDiff;
+    const staged = this.selectedStagedDiff;
+    if (unstaged === undefined || staged === undefined) return html`<p class="muted">Loading diff…</p>`;
+    const diffs = [staged, unstaged].filter((diff) => diff.diff !== "");
+    if (diffs.length === 0) return html`<p class="muted">No staged or unstaged diff.</p>`;
     return html`
-      <div class="viewer-header"><strong>${diff.path ?? "diff"}</strong><small>${diff.staged ? "staged" : "unstaged"}${diff.truncated ? " · truncated" : ""}</small></div>
-      <code-viewer .content=${diff.diff !== "" ? diff.diff : "No unstaged diff."} .language=${"diff"}></code-viewer>
+      <div class=${diffs.length === 1 ? "diffs single" : "diffs"}>
+        ${diffs.map((diff) => this.renderDiffSection(diff))}
+      </div>
+    `;
+  }
+
+  private renderDiffSection(diff: GitDiffResponse) {
+    return html`
+      <section class="diff-section">
+        <div class="viewer-header"><strong>${diff.path ?? "diff"}</strong><small>${diff.staged ? "staged" : "unstaged"}${diff.truncated ? " · truncated" : ""}</small></div>
+        <code-viewer .content=${diff.diff} .language=${"diff"}></code-viewer>
+      </section>
     `;
   }
 
