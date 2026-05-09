@@ -132,6 +132,24 @@ One-line install is also available for users who prefer it:
 curl -fsSL https://raw.githubusercontent.com/jmfederico/pi-web/main/install.sh | sh
 ```
 
+Pi Web is also published as a Pi package. Installing it through Pi exposes a `/pi-web` command inside Pi:
+
+```bash
+pi install npm:@jmfederico/pi-web
+```
+
+Then in Pi:
+
+```text
+/pi-web install
+/pi-web status
+/pi-web logs
+/pi-web restart
+/pi-web doctor
+```
+
+The Pi command is a convenience wrapper around the same service installer. `/pi-web logs` shows the last 100 journal lines; use `pi-web logs` in a shell when you want to follow logs continuously.
+
 Advanced users may run the binaries however they prefer:
 
 ```bash

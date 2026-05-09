@@ -77,7 +77,7 @@ export class SessionController {
       const [page, status] = await Promise.all([api.messages(session.id, { limit: MESSAGE_PAGE_SIZE }), api.status(session.id)]);
       if (seq !== this.selectionSeq || this.getState().selectedSession?.id !== session.id) return;
       const history = this.mergeAndCacheHistory(session.id, page);
-      const isReceivingPartialStream = status.isStreaming === true;
+      const isReceivingPartialStream = status.isStreaming;
       this.catchupStreamSessionId = isReceivingPartialStream ? session.id : undefined;
       this.setState({ messages: normalizeMessages(history.messages), messagePageStart: history.start, messagePageTotal: history.total, isLoadingEarlierMessages: false, isReceivingPartialStream, status, activity: this.getState().sessionActivities[session.id] });
       this.applyStatus(status);

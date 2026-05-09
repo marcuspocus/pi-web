@@ -19,7 +19,7 @@ export function applyTranscriptEvent(messages: ChatLine[], event: SessionUiEvent
 
 function applyMessageEndMeta(messages: ChatLine[], rawMessage: unknown): ChatLine[] | undefined {
   const ended = normalizeMessage(rawMessage)[0];
-  if (ended === undefined || ended.meta === undefined) return undefined;
+  if (ended?.meta === undefined) return undefined;
   const index = findLastMatchingRole(messages, ended.role);
   if (index < 0) return undefined;
   return messages.map((message, i) => i === index ? withMessageMeta(message, rawMessage) : message);

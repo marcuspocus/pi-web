@@ -17,8 +17,19 @@
     "skipLibCheck": true,
     "experimentalDecorators": true,
     "useDefineForClassFields": false,
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["node"]
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": [
+      "node"
+    ]
   },
-  "include": ["src/**/*.ts", "vite.config.ts", "vitest.config.ts"]
+  "include": [
+    "src/**/*.ts",
+    "vite.config.ts",
+    "vitest.config.ts",
+    "extensions/**/*.ts"
+  ]
 }

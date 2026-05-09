@@ -85,13 +85,23 @@ function systemdEscape(value: string): string {
   return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
 }
 
+function sessiondExec(): string {
+  const configured = process.env["PI_WEB_SESSIOND_EXEC"]?.trim();
+  return configured === undefined || configured === "" ? "pi-web-sessiond" : configured;
+}
+
+function webExec(): string {
+  const configured = process.env["PI_WEB_SERVER_EXEC"]?.trim();
+  return configured === undefined || configured === "" ? "pi-web-server" : configured;
+}
+
 function sessiondUnit(): string {
   return `[Unit]
 Description=Pi Web session daemon
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/env bash -lc ${shellSingleQuote("exec pi-web-sessiond")}
+ExecStart=/usr/bin/env bash -lc ${shellSingleQuote(`exec ${sessiondExec()}`)}
 Restart=on-failure
 RestartSec=2
 
@@ -109,7 +119,7 @@ Wants=${sessiondServiceName}
 
 [Service]
 Type=simple
-${configEnvironment}ExecStart=/usr/bin/env bash -lc ${shellSingleQuote("exec pi-web-server")}
+${configEnvironment}ExecStart=/usr/bin/env bash -lc ${shellSingleQuote(`exec ${webExec()}`)}
 Restart=on-failure
 RestartSec=2
 
@@ -130,8 +140,8 @@ async function writeInitialConfig(options: InstallOptions): Promise<string> {
 async function install(args: string[]): Promise<void> {
   const options = parseInstallOptions(args);
   if (!hasCommand("systemctl")) throw new Error("systemctl was not found in a bash login shell");
-  if (!hasCommand("pi-web-server")) throw new Error("pi-web-server was not found in a bash login shell. Is pi-web installed globally?");
-  if (!hasCommand("pi-web-sessiond")) throw new Error("pi-web-sessiond was not found in a bash login shell. Is pi-web installed globally?");
+  if (process.env["PI_WEB_SERVER_EXEC"] === undefined && !hasCommand("pi-web-server")) throw new Error("pi-web-server was not found in a bash login shell. Is pi-web installed globally?");
+  if (process.env["PI_WEB_SESSIOND_EXEC"] === undefined && !hasCommand("pi-web-sessiond")) throw new Error("pi-web-sessiond was not found in a bash login shell. Is pi-web installed globally?");
 
   const configPath = await writeInitialConfig(options);
 
