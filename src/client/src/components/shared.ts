@@ -267,11 +267,15 @@ export const promptEditorStyles = css`
   footer.shell-mode { border-top-color: #3fb950; background: #0f1b12; }
   .editor-wrap { position: relative; min-width: 0; }
   .actions { display: flex; gap: 8px; align-items: start; white-space: nowrap; }
-  textarea { box-sizing: border-box; width: 100%; min-height: 54px; max-height: 220px; resize: none; overflow-y: auto; border-radius: 8px; border: 1px solid #30363d; background: #0d1117; color: #e6edf3; padding: 8px; }
+  textarea { box-sizing: border-box; width: 100%; min-height: 54px; max-height: 220px; resize: none; overflow-y: auto; border-radius: 8px; border: 1px solid #30363d; background: #0d1117; color: #e6edf3; padding: 8px; font: 16px/1.4 system-ui, sans-serif; }
   .shell-mode textarea { border-color: #3fb950; box-shadow: 0 0 0 1px #3fb95055; }
   .mode-hint { position: absolute; right: 8px; bottom: 8px; max-width: calc(100% - 16px); border: 1px solid #238636; border-radius: 999px; background: #0f2a16; color: #3fb950; padding: 2px 8px; font-size: 12px; pointer-events: none; }
   button { border: 1px solid #30363d; border-radius: 8px; background: #161b22; color: #e6edf3; padding: 7px 9px; cursor: pointer; }
   button:disabled, textarea:disabled { opacity: .5; cursor: not-allowed; }
+  @media (max-width: 640px) {
+    footer { grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 8px; }
+    .actions { justify-content: flex-end; flex-wrap: wrap; }
+  }
 `;
 
 export const composerStyles = promptEditorStyles;

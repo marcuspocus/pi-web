@@ -1,7 +1,10 @@
 import { marked } from "marked";
 
+const renderer = new marked.Renderer();
+renderer.html = ({ text }) => escapeHtml(text);
+
 export function toSafeMarkdownHtml(text: string): string {
-  const html = marked.parse(escapeHtml(text), { async: false, breaks: true, gfm: true });
+  const html = marked.parse(text, { async: false, breaks: true, gfm: true, renderer });
   return sanitizeHtml(html);
 }
 
