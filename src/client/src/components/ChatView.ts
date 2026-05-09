@@ -39,6 +39,7 @@ export class ChatView extends LitElement {
   @state() private openGroupKeys = new Set<string>();
   @state() private loadedScrollPercent = 100;
   @state() private expandedMetaKey: string | undefined;
+  @state() private copiedMessageKey: string | undefined;
   private suppressScrollSave = false;
   private saveScrollTimer?: number;
   private lastScrollTop = 0;
@@ -188,7 +189,22 @@ export class ChatView extends LitElement {
     return html`
       <div class="msg-header">
         <b class="label">${message.role}</b>
-        <span class=${expanded ? "msg-meta expanded" : "msg-meta"} role="button" tabindex="0" title=${meta.full} aria-label=${meta.full} aria-expanded=${String(expanded)} @click=${() => { this.expandedMetaKey = expanded ? undefined : key; }} @keydown=${(event: KeyboardEvent) => { this.onMetaKeydown(event, key, expanded); }}>${meta.short}</span>
+        <div class="msg-header-trailing">
+          ${this.renderMessageActions(message, key)}
+          <span class=${expanded ? "msg-meta expanded" : "msg-meta"} role="button" tabindex="0" title=${meta.full} aria-label=${meta.full} aria-expanded=${String(expanded)} @click=${() => { this.expandedMetaKey = expanded ? undefined : key; }} @keydown=${(event: KeyboardEvent) => { this.onMetaKeydown(event, key, expanded); }}>${meta.short}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  private renderMessageActions(message: ChatLine, key: string) {
+    if (!this.isCopyableMessage(message)) return null;
+    const copied = this.copiedMessageKey === key;
+    return html`
+      <div class="msg-actions" aria-label="Message actions">
+        <button type="button" class="msg-action" title=${copied ? "Copied" : "Copy message"} aria-label=${`${copied ? "Copied" : "Copy"} ${message.role} message`} @click=${(event: MouseEvent) => { void this.copyMessage(message, key, event); }}>
+          <span aria-hidden="true">${copied ? "✓" : "⧉"}</span>
+        </button>
       </div>
     `;
   }
@@ -197,6 +213,37 @@ export class ChatView extends LitElement {
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
     this.expandedMetaKey = expanded ? undefined : key;
+  }
+
+  private isCopyableMessage(message: ChatLine): boolean {
+    return (message.role === "user" || message.role === "assistant") && this.messageCopyText(message) !== "";
+  }
+
+  private messageCopyText(message: ChatLine): string {
+    return message.parts
+      .filter((part): part is Extract<ChatPart, { type: "text" }> => part.type === "text")
+      .map((part) => part.text.trim())
+      .filter((text) => text !== "")
+      .join("\n\n");
+  }
+
+  private async copyMessage(message: ChatLine, key: string, event: MouseEvent): Promise<void> {
+    event.stopPropagation();
+    const ok = await this.writeClipboard(this.messageCopyText(message));
+    if (!ok) return;
+    this.copiedMessageKey = key;
+    window.setTimeout(() => {
+      if (this.copiedMessageKey === key) this.copiedMessageKey = undefined;
+    }, 1200);
+  }
+
+  private async writeClipboard(text: string): Promise<boolean> {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private messageMetaLabel(message: ChatLine): { short: string; full: string } {

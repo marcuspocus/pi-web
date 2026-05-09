@@ -151,12 +151,18 @@ export const chatStyles = css`
   .session-activity span, .session-activity small { color: #8b949e; }
   .history-boundary small { color: #6e7681; }
   .msg-header { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+  .msg-header-trailing { min-width: 0; display: inline-flex; align-items: baseline; justify-content: flex-end; gap: 8px; }
+  .msg-actions { display: inline-flex; gap: 6px; opacity: 0; transition: opacity .12s ease; }
+  .msg-action { display: inline-grid; place-items: center; width: 24px; height: 24px; border: 1px solid #30363d; border-radius: 6px; background: #161b22; color: #8b949e; padding: 0; font: 14px system-ui, sans-serif; line-height: 1; cursor: pointer; }
+  .msg-action:hover, .msg-action:focus { color: #e6edf3; border-color: #58a6ff; }
+  .msg:hover > .msg-header .msg-actions, .msg:focus-within > .msg-header .msg-actions, .group-msg:hover > .msg-header .msg-actions, .group-msg:focus-within > .msg-header .msg-actions { opacity: 1; }
   .label { display: block; color: #8b949e; font-size: 12px; text-transform: uppercase; }
   .msg-header .label { margin: 0; }
   .msg-meta { min-width: 0; opacity: .28; border: 0; background: transparent; color: #6e7681; padding: 0; font: 11px system-ui, sans-serif; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity .12s ease, max-width .12s ease; cursor: pointer; user-select: text; -webkit-user-select: text; }
-  .msg:hover > .msg-header .msg-meta, .msg:focus-within > .msg-header .msg-meta, .msg-meta:focus, .msg-meta.expanded { opacity: 1; }
+  .msg:hover > .msg-header .msg-meta, .msg:focus-within > .msg-header .msg-meta, .group-msg:hover > .msg-header .msg-meta, .group-msg:focus-within > .msg-header .msg-meta, .msg-meta:focus, .msg-meta.expanded { opacity: 1; }
   .msg-meta:focus { outline: 1px solid #30363d; outline-offset: 3px; border-radius: 4px; }
   @media (hover: none) {
+    .msg-actions { opacity: 1; }
     .msg-meta { opacity: .75; max-width: 26px; }
     .msg-meta::before { content: "ⓘ"; font-size: 13px; }
     .msg-meta:focus, .msg-meta.expanded { opacity: 1; max-width: 75%; }
