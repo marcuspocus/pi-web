@@ -2,11 +2,11 @@
 
 ![Pi Web](docs/assets/pi-web-banner.png)
 
-![Pi Web demo](docs/assets/pi-web-demo.gif)
-
 **Run AI coding agents on your own machine or server, keep them alive in real workspaces, and control everything from a browser.**
 
 Pi Web is a web control plane for [Pi Coding Agent](https://github.com/earendil-works/pi/tree/main/packages/coding-agent). Add your repositories once, open project workspaces and git worktrees, start agent sessions inside them, and come back later without losing the work. Your browser becomes the cockpit; your server becomes the persistent development environment. Start on your laptop, check in from your phone, and continue from an iPad or another machine whenever that is the device you have at hand.
+
+![Pi Web demo](docs/assets/pi-web-demo.gif)
 
 With Pi Web you can:
 
