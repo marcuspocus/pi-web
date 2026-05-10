@@ -1,6 +1,6 @@
 import { LitElement, html, type PropertyValues } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
-import { api, type FileSuggestion, type SlashCommand } from "../api";
+import { api, type FileSuggestion, type SessionStatus, type SlashCommand } from "../api";
 import { inputModeForDraft } from "../inputModes";
 import { promptEditorStyles, type CompletionItem } from "./shared";
 import "./AutocompleteMenu";
@@ -13,8 +13,13 @@ export class PromptEditor extends LitElement {
   @property({ type: Boolean }) canSteer = false;
   @property({ type: Boolean }) isCompacting = false;
   @property({ type: Boolean }) canStop = false;
+  @property({ attribute: false }) status?: SessionStatus;
   @property({ attribute: false }) onSend?: (text: string, streamingBehavior?: "steer" | "followUp") => void;
   @property({ attribute: false }) onStop?: () => void;
+  @property({ attribute: false }) onSelectModel?: () => void;
+  @property({ attribute: false }) onCycleModel?: (direction: "forward" | "backward") => void;
+  @property({ attribute: false }) onSelectThinking?: () => void;
+  @property({ attribute: false }) onCycleThinking?: () => void;
   @query("textarea") private textarea?: HTMLTextAreaElement;
   @state() private draft = "";
   @state() private completions: CompletionItem[] = [];
@@ -55,6 +60,7 @@ export class PromptEditor extends LitElement {
           <autocomplete-menu .items=${this.completions} .selectedIndex=${this.selectedIndex} .onPick=${(item: CompletionItem) => { this.pick(item); }}></autocomplete-menu>
         </div>
         <div class="actions">
+          ${this.renderCompactStatus()}
           <button ?disabled=${this.disabled} title=${queuesInput ? "Queue until the current activity finishes" : "Send message"} @click=${() => { this.send("followUp"); }}>${queuesInput ? "Queue" : "Send"}</button>
           ${this.canSteer && !this.isCompacting ? html`<button ?disabled=${this.disabled} title="Steer the current response before the next model call" @click=${() => { this.send("steer"); }}>Steer</button>` : null}
           <button ?disabled=${this.disabled || !this.canStop} title=${this.canStop ? "Stop current work and clear queued messages" : "Nothing running"} @click=${() => this.onStop?.()}>Stop</button>
@@ -65,6 +71,24 @@ export class PromptEditor extends LitElement {
 
   focusInput() {
     this.textarea?.focus();
+  }
+
+  private renderCompactStatus() {
+    const status = this.status;
+    if (status === undefined) return null;
+    const model = status.model?.id ?? "no model";
+    const provider = status.model?.provider !== undefined && status.model.provider !== "" ? `${status.model.provider}/` : "";
+    return html`
+      <div class="compact-status" aria-label="Session status">
+        <span class="model-controls">
+          <button class="cycle-model" title="Previous model" @click=${() => this.onCycleModel?.("backward")}>‹</button>
+          <button class="select-model" title="Select model" @click=${() => this.onSelectModel?.()}>${provider}${model}</button>
+          <button class="cycle-model" title="Next model" @click=${() => this.onCycleModel?.("forward")}>›</button>
+        </span>
+        <button class="thinking-cycle" title="Cycle thinking level" @click=${() => this.onCycleThinking?.()}>think ${status.thinkingLevel ?? "off"}</button>
+        <button class="thinking-select" title="Select thinking level" @click=${() => this.onSelectThinking?.()}>⌄</button>
+      </div>
+    `;
   }
 
   private resizeTextarea() {
