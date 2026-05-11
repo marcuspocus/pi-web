@@ -20,6 +20,7 @@ export interface PluginActivationContext {
 export interface PluginContributions {
   actions?: PluginAction[];
   workspacePanels?: WorkspacePanelContribution[];
+  workspaceLabelContributions?: WorkspaceLabelContribution[];
 }
 
 export interface PluginRuntimeContext {
@@ -79,6 +80,45 @@ export interface WorkspacePanelContribution {
 }
 
 export interface QualifiedWorkspacePanelContribution extends WorkspacePanelContribution {
+  id: QualifiedContributionId;
+  pluginId: PluginId;
+  localId: LocalContributionId;
+}
+
+export interface WorkspaceLabelContext {
+  workspace: Workspace;
+  state: AppState;
+}
+
+export type WorkspaceLabelItem = WorkspaceLabelTextItem | WorkspaceLabelLinkItem | WorkspaceLabelRenderItem;
+
+export interface WorkspaceLabelTextItem {
+  type: "text";
+  text: string;
+  title?: string;
+}
+
+export interface WorkspaceLabelLinkItem {
+  type: "link";
+  text: string;
+  href: string;
+  title?: string;
+  target?: "_blank" | "_self";
+}
+
+export interface WorkspaceLabelRenderItem {
+  type: "render";
+  render: () => TemplateResult;
+}
+
+export interface WorkspaceLabelContribution {
+  id: LocalContributionId;
+  order?: number;
+  visible?: (context: WorkspaceLabelContext) => boolean;
+  items: (context: WorkspaceLabelContext) => WorkspaceLabelItem | WorkspaceLabelItem[] | undefined;
+}
+
+export interface QualifiedWorkspaceLabelContribution extends WorkspaceLabelContribution {
   id: QualifiedContributionId;
   pluginId: PluginId;
   localId: LocalContributionId;

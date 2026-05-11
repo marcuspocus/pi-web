@@ -1,14 +1,16 @@
 import { LitElement, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import type { FileContentResponse, FileTreeEntry, GitDiffResponse, GitStatusResponse, Workspace } from "../api";
-import type { QualifiedContributionId, QualifiedWorkspacePanelContribution, WorkspacePanelContext } from "../plugins/types";
+import type { QualifiedContributionId, QualifiedWorkspacePanelContribution, WorkspaceLabelItem, WorkspacePanelContext } from "../plugins/types";
 import { workspacePanelStyles } from "./shared";
+import { renderWorkspaceLabel } from "./workspaceLabel";
 
 @customElement("workspace-panel")
 export class WorkspacePanel extends LitElement {
   @property({ attribute: false }) workspace: Workspace | undefined;
   @property() tool: QualifiedContributionId = "core:workspace.files";
   @property({ attribute: false }) panels: QualifiedWorkspacePanelContribution[] = [];
+  @property({ attribute: false }) workspaceLabelItems: WorkspaceLabelItem[] = [];
   @property({ type: Boolean }) hideToolTabs = false;
   @property({ attribute: false }) fileTree: FileTreeEntry[] = [];
   @property({ attribute: false }) expandedDirs: Record<string, FileTreeEntry[]> = {};
@@ -41,7 +43,7 @@ export class WorkspacePanel extends LitElement {
             `)}
           </div>
         `}
-        <small title=${workspace.path}>${workspace.label}</small>
+        <small>${renderWorkspaceLabel(workspace.label, this.workspaceLabelItems, workspace.path)}</small>
       </header>
       ${selectedPanel === undefined ? html`<section class="empty">No workspace panels registered.</section>` : selectedPanel.render(this.createPanelContext(workspace))}
     `;

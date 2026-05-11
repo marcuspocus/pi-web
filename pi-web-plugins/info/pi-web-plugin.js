@@ -16,6 +16,13 @@ export default {
         },
       },
     ],
+    workspaceLabelContributions: [
+      {
+        id: "workspace.path-label",
+        order: 100,
+        items: (context) => ({ type: "text", text: context.workspace.isGitRepo ? "git" : "folder", title: context.workspace.path }),
+      },
+    ],
     workspacePanels: [
       {
         id: "workspace.info",

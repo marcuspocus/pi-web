@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, mkdir, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -52,6 +52,23 @@ describe("PiWebPluginService", () => {
     expect(manifest.plugins).toHaveLength(1);
     expect(manifest.plugins[0]).toMatchObject({ id: "review", source: "npm:@acme/review", scope: "user" });
     expect(manifest.plugins[0]?.module).toMatch(/^\/pi-web-plugins\/review\/dist\/review\.js\?v=\d+$/u);
+  });
+
+  it("discovers local plugins through symlinks for development", async () => {
+    const pluginDir = join(tempDir, "dev-plugin");
+    await writePlugin(pluginDir, {
+      packageJson: { piWeb: { id: "dev", plugin: "pi-web-plugin.js" } },
+      files: { "pi-web-plugin.js": "export default { id: 'dev' };" },
+    });
+    await mkdir(join(tempDir, "plugins"), { recursive: true });
+    await symlink(pluginDir, join(tempDir, "plugins", "dev"), "dir");
+
+    const service = new PiWebPluginService({ roots: [{ path: join(tempDir, "plugins"), source: "test", scope: "local" }], packageProvider: false });
+
+    const manifest = await service.manifest();
+    expect(manifest.plugins).toHaveLength(1);
+    expect(manifest.plugins[0]).toMatchObject({ id: "dev", source: "test", scope: "local" });
+    await expect(service.readAsset("dev", "pi-web-plugin.js")).resolves.toBeDefined();
   });
 
   it("keeps duplicate plugin ids addressable", async () => {

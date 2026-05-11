@@ -1,13 +1,16 @@
 import { LitElement, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import type { SessionStatus, Workspace } from "../api";
+import type { WorkspaceLabelItem } from "../plugins/types";
 import { formatCost, formatTokenCount } from "../utils/format";
 import { statusBarStyles } from "./shared";
+import { renderWorkspaceLabel } from "./workspaceLabel";
 
 @customElement("status-bar")
 export class StatusBar extends LitElement {
   @property({ attribute: false }) status?: SessionStatus;
   @property({ attribute: false }) workspace?: Workspace;
+  @property({ attribute: false }) workspaceLabelItems: WorkspaceLabelItem[] = [];
 
   override render() {
     const status = this.status;
@@ -21,7 +24,7 @@ export class StatusBar extends LitElement {
     const tokens = status.tokens;
     return html`
       <div class="bar">
-        <span title=${this.workspace?.path ?? ""}>${this.workspace?.label ?? "workspace"}</span>
+        <span>${renderWorkspaceLabel(this.workspace?.label ?? "workspace", this.workspaceLabelItems, this.workspace?.path)}</span>
         <span>↑${formatTokenCount(tokens.input)}</span>
         <span>↓${formatTokenCount(tokens.output)}</span>
         <span>${contextText}</span>

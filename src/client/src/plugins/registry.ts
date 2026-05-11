@@ -1,4 +1,6 @@
-import type { PiWebPlugin, PluginAction, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, QualifiedWorkspacePanelContribution, WorkspacePanelContribution } from "./types";
+import type { AppState } from "../appState";
+import type { Workspace } from "../api";
+import type { PiWebPlugin, PluginAction, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContribution } from "./types";
 
 const idPattern = /^[a-z][a-z0-9.-]*$/u;
 const localIdPattern = /^[a-z][a-z0-9.-]*$/u;
@@ -12,6 +14,7 @@ type RegisteredPluginAction = Omit<PluginAction, "id"> & {
 export class PluginRegistry {
   private readonly actions: RegisteredPluginAction[] = [];
   private readonly workspacePanels: QualifiedWorkspacePanelContribution[] = [];
+  private readonly workspaceLabelContributions: QualifiedWorkspaceLabelContribution[] = [];
   private readonly pluginIds = new Set<string>();
   private readonly contributionIds = new Set<QualifiedContributionId>();
 
@@ -23,6 +26,7 @@ export class PluginRegistry {
     const contributions = plugin.activate({ apiVersion: 1 });
     for (const action of contributions.actions ?? []) this.actions.push(this.qualifyAction(plugin.id, action));
     for (const panel of contributions.workspacePanels ?? []) this.workspacePanels.push(this.qualifyWorkspacePanel(plugin.id, panel));
+    for (const contribution of contributions.workspaceLabelContributions ?? []) this.workspaceLabelContributions.push(this.qualifyWorkspaceLabelContribution(plugin.id, contribution));
   }
 
   getActions(context: PluginRuntimeContext): QualifiedPluginAction[] {
@@ -47,6 +51,18 @@ export class PluginRegistry {
     return [...this.workspacePanels].sort((left, right) => (left.order ?? 1000) - (right.order ?? 1000) || left.title.localeCompare(right.title));
   }
 
+  getWorkspaceLabelItems(state: AppState, workspace: Workspace): WorkspaceLabelItem[] {
+    const context = { state, workspace };
+    return [...this.workspaceLabelContributions]
+      .sort((left, right) => (left.order ?? 1000) - (right.order ?? 1000) || left.id.localeCompare(right.id))
+      .flatMap((contribution) => {
+        if (contribution.visible?.(context) === false) return [];
+        const items = contribution.items(context);
+        if (items === undefined) return [];
+        return Array.isArray(items) ? items : [items];
+      });
+  }
+
   private qualifyAction(pluginId: string, action: PluginAction): RegisteredPluginAction {
     const id = this.qualify(pluginId, action.id);
     return { ...action, id, pluginId, localId: action.id };
@@ -55,6 +71,11 @@ export class PluginRegistry {
   private qualifyWorkspacePanel(pluginId: string, panel: WorkspacePanelContribution): QualifiedWorkspacePanelContribution {
     const id = this.qualify(pluginId, panel.id);
     return { ...panel, id, pluginId, localId: panel.id };
+  }
+
+  private qualifyWorkspaceLabelContribution(pluginId: string, contribution: WorkspaceLabelContribution): QualifiedWorkspaceLabelContribution {
+    const id = this.qualify(pluginId, contribution.id);
+    return { ...contribution, id, pluginId, localId: contribution.id };
   }
 
   private qualify(pluginId: string, localId: string): QualifiedContributionId {

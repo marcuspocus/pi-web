@@ -17,6 +17,13 @@ export const examplePlugin: PiWebPlugin = {
         },
       },
     ],
+    workspaceLabelContributions: [
+      {
+        id: "workspace.example-label",
+        order: 100,
+        items: (context) => ({ type: "text", text: context.workspace.isGitRepo ? "git" : "folder", title: context.workspace.path }),
+      },
+    ],
     workspacePanels: [
       {
         id: "workspace.info",

@@ -159,8 +159,11 @@ async function discoverLocalRoot(root: LocalPluginRoot): Promise<PluginRecord[]>
   const entries = await readdir(root.path, { withFileTypes: true }).catch(() => []);
   const plugins: PluginRecord[] = [];
   for (const entry of entries) {
-    if (!entry.isDirectory() || !pluginIdPattern.test(entry.name)) continue;
-    plugins.push(...await discoverLocalPlugin(join(root.path, entry.name), entry.name, root));
+    if (!pluginIdPattern.test(entry.name)) continue;
+    const pluginRoot = join(root.path, entry.name);
+    const pluginStat = entry.isDirectory() ? undefined : entry.isSymbolicLink() ? await stat(pluginRoot).catch(() => undefined) : undefined;
+    if (!entry.isDirectory() && pluginStat?.isDirectory() !== true) continue;
+    plugins.push(...await discoverLocalPlugin(pluginRoot, entry.name, root));
   }
   return plugins;
 }

@@ -73,7 +73,12 @@ export const workspacePanelStyles = css`
   button { border: 1px solid #30363d; border-radius: 7px; background: #161b22; color: #e6edf3; padding: 5px 7px; cursor: pointer; }
   button.selected { border-color: #58a6ff; background: #0d2847; }
   small, .muted { color: #8b949e; }
-  header small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  header small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .workspace-label { min-width: 0; display: inline-flex; align-items: baseline; gap: 5px; max-width: 100%; overflow: hidden; white-space: nowrap; }
+  .workspace-label-base, .workspace-label-item, .workspace-label-render { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .workspace-label-item, .workspace-label-render, .workspace-label-separator { color: #8b949e; }
+  .workspace-label-link { color: #58a6ff; text-decoration: none; }
+  .workspace-label-link:hover, .workspace-label-link:focus { text-decoration: underline; }
   .toolbar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 8px; border-bottom: 1px solid #21262d; }
   .toolbar button { margin-left: auto; }
   .stale { border: 1px solid #6e5200; border-radius: 999px; color: #d29922; padding: 1px 6px; font-size: 12px; }
@@ -101,6 +106,10 @@ export const listStyles = css`
   h2 { display: flex; justify-content: space-between; align-items: center; margin: 0 0 8px; color: #8b949e; font-size: 12px; text-transform: uppercase; }
   button { border: 1px solid #30363d; border-radius: 8px; background: #161b22; color: #e6edf3; padding: 7px 9px; cursor: pointer; }
   section > button { display: block; width: 100%; text-align: left; margin: 6px 0; }
+  .workspace-row { margin: 6px 0; }
+  .workspace-row.selected .workspace-main { border-color: #58a6ff; background: #0d2847; }
+  .workspace-main { box-sizing: border-box; display: block; width: 100%; border: 1px solid #30363d; border-radius: 8px; background: #161b22; padding: 7px 9px; text-align: left; }
+  .workspace-select { min-width: 0; border: 0; background: transparent; color: #e6edf3; padding: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; }
   .subheading { margin-top: 14px; }
   .section-toggle { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; border: 0; background: transparent; color: inherit; padding: 0; font: inherit; text-transform: inherit; }
   .section-toggle small { display: inline; color: inherit; font-size: inherit; }
@@ -119,6 +128,11 @@ export const listStyles = css`
   button.selected { border-color: #58a6ff; background: #0d2847; }
   button:disabled { opacity: .5; cursor: not-allowed; }
   small { display: block; color: #8b949e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .workspace-label { min-width: 0; display: inline-flex; align-items: baseline; gap: 5px; max-width: 100%; overflow: hidden; white-space: nowrap; }
+  .workspace-label-base, .workspace-label-item, .workspace-label-render { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .workspace-label-item, .workspace-label-render, .workspace-label-separator { color: #8b949e; }
+  .workspace-label-link { color: #58a6ff; text-decoration: none; }
+  .workspace-label-link:hover, .workspace-label-link:focus { text-decoration: underline; }
 `;
 
 export const chatStyles = css`
@@ -224,6 +238,11 @@ export const statusBarStyles = css`
   :host { display: block; color: #8b949e; font: 12px system-ui, sans-serif; }
   .bar { display: flex; gap: 12px; align-items: center; min-width: 0; padding: 7px 12px; border-top: 1px solid #30363d; background: #0d1117; white-space: nowrap; overflow: hidden; }
   span { overflow: hidden; text-overflow: ellipsis; }
+  .workspace-label { min-width: 0; display: inline-flex; align-items: baseline; gap: 5px; max-width: 100%; overflow: hidden; white-space: nowrap; }
+  .workspace-label-base, .workspace-label-item, .workspace-label-render { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .workspace-label-item, .workspace-label-render, .workspace-label-separator { color: #8b949e; }
+  .workspace-label-link { color: #58a6ff; text-decoration: none; }
+  .workspace-label-link:hover, .workspace-label-link:focus { text-decoration: underline; }
   .bar > span:first-child { flex: 1 1 auto; min-width: 80px; }
   .activity { display: inline-flex; align-items: center; gap: 6px; color: #8b949e; }
   .activity.active { color: #3fb950; }

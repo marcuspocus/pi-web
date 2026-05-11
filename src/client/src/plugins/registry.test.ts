@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { Workspace } from "../api";
 import { initialAppState, type AppState } from "../appState";
 import { corePlugin } from "./core";
 import { PluginRegistry } from "./registry";
@@ -72,8 +73,29 @@ describe("PluginRegistry", () => {
 
     expect(calls).toEqual(["refreshGit"]);
   });
+
+  it("collects workspace label items in contribution order", () => {
+    const registry = new PluginRegistry();
+    const workspace = testWorkspace();
+    registry.register({
+      id: "example",
+      name: "Example",
+      activate: () => ({
+        workspaceLabelContributions: [
+          { id: "last", order: 20, items: () => ({ type: "text", text: "last" }) },
+          { id: "hidden", order: 5, visible: () => false, items: () => ({ type: "text", text: "hidden" }) },
+          { id: "first", order: 10, items: () => [{ type: "link", text: "web", href: "http://localhost:5173" }] },
+        ],
+      }),
+    });
+
+    expect(registry.getWorkspaceLabelItems(initialAppState(), workspace)).toEqual([
+      { type: "link", text: "web", href: "http://localhost:5173" },
+      { type: "text", text: "last" },
+    ]);
+  });
 });
 
-function testWorkspace(): AppState["selectedWorkspace"] {
+function testWorkspace(): Workspace {
   return { id: "w1", projectId: "p1", path: "/tmp/project", label: "main", isMain: true, isGitRepo: true, isGitWorktree: false };
 }
