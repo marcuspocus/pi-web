@@ -21,7 +21,7 @@ export function applyTranscriptEvent(messages: ChatLine[], event: SessionUiEvent
 function applyFinalMessage(messages: ChatLine[], rawMessage: unknown): ChatLine[] | undefined {
   const ended = normalizeMessage(rawMessage)[0];
   if (ended === undefined) return undefined;
-  const skillReadIndex = ended.role === "skill" ? findMatchingSkillRead(messages, ended) : -1;
+  const skillReadIndex = findMatchingSkillRead(messages, ended);
   if (skillReadIndex >= 0) return [...messages.slice(0, skillReadIndex), ended, ...messages.slice(skillReadIndex + 1)];
   const last = messages.at(-1);
   if (last?.role !== ended.role) return [...messages, ended];
@@ -30,20 +30,35 @@ function applyFinalMessage(messages: ChatLine[], rawMessage: unknown): ChatLine[
 }
 
 function findMatchingSkillRead(messages: ChatLine[], ended: ChatLine): number {
-  const endedReads = skillReadPaths(ended);
+  const endedReads = skillReads(ended);
   if (endedReads.length === 0) return -1;
   for (let index = messages.length - 1; index >= 0; index--) {
-    const paths = skillReadPaths(messages[index]);
-    if (paths.length === endedReads.length && paths.every((path, pathIndex) => path === endedReads[pathIndex])) return index;
+    const message = messages[index];
+    if (message?.role !== "skill") continue;
+    const reads = skillReads(message);
+    if (sameSkillReads(reads, endedReads)) return index;
   }
   return -1;
 }
 
-function skillReadPaths(message: ChatLine | undefined): string[] {
-  if (message === undefined || message.role !== "skill") return [];
-  return message.parts
-    .filter((part): part is Extract<ChatLine["parts"][number], { type: "skillRead" }> => part.type === "skillRead")
-    .map((part) => part.path);
+function skillReads(message: ChatLine | undefined): SkillRead[] {
+  if (message === undefined) return [];
+  return message.parts.filter((part): part is SkillRead => part.type === "skillRead");
+}
+
+type SkillRead = Extract<ChatLine["parts"][number], { type: "skillRead" }>;
+
+function sameSkillReads(left: SkillRead[], right: SkillRead[]): boolean {
+  return left.length === right.length && left.every((read, index) => sameSkillRead(read, right[index]));
+}
+
+function sameSkillRead(left: SkillRead, right: SkillRead | undefined): boolean {
+  if (right === undefined) return false;
+  return normalizeSkillPath(left.path) === normalizeSkillPath(right.path) || left.name === right.name;
+}
+
+function normalizeSkillPath(path: string): string {
+  return path.replace(/\\/g, "/");
 }
 
 function sameMessageText(left: ChatLine, right: ChatLine): boolean {
@@ -63,6 +78,7 @@ function appendNormalized(messages: ChatLine[], rawMessage: unknown): ChatLine[]
 
 function appendLine(messages: ChatLine[], line: ChatLine): ChatLine[] {
   const last = messages.at(-1);
-  if (last?.role === line.role) return [...messages.slice(0, -1), { ...last, parts: [...last.parts, ...line.parts] }];
+  if (line.role === "skill" && sameSkillReads(skillReads(last), skillReads(line))) return messages;
+  if (last?.role === line.role && line.role !== "skill") return [...messages.slice(0, -1), { ...last, parts: [...last.parts, ...line.parts] }];
   return [...messages, line];
 }
