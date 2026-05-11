@@ -65,6 +65,7 @@ export interface WorkspacePanelContext {
   selectedStagedDiff: GitDiffResponse | undefined;
   gitStale: boolean;
   activeTerminalCount: number;
+  terminalAutoStart: boolean;
   onRefreshFiles: () => void;
   onExpandDir: (path: string) => void;
   onSelectFile: (path: string) => void;

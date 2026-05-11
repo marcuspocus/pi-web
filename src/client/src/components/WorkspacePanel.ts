@@ -29,6 +29,7 @@ export class WorkspacePanel extends LitElement {
   @property({ attribute: false }) onRefreshGit: () => void = () => undefined;
   @property({ attribute: false }) onSelectDiff: (path: string) => void = () => undefined;
   @property({ type: Number }) activeTerminalCount = 0;
+  @property({ type: Boolean }) terminalAutoStart = false;
 
   override render() {
     const workspace = this.workspace;
@@ -75,6 +76,7 @@ export class WorkspacePanel extends LitElement {
       selectedStagedDiff: this.selectedStagedDiff,
       gitStale: this.gitStale,
       activeTerminalCount: this.activeTerminalCount,
+      terminalAutoStart: this.terminalAutoStart,
       onRefreshFiles: this.onRefreshFiles,
       onExpandDir: this.onExpandDir,
       onSelectFile: this.onSelectFile,

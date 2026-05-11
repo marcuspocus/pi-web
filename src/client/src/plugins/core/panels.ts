@@ -76,7 +76,7 @@ function renderFileViewer(context: WorkspacePanelContext): TemplateResult {
 
 function renderTerminal(context: WorkspacePanelContext): TemplateResult {
   loadTerminalPanel();
-  return html`<terminal-panel .workspace=${context.workspace}></terminal-panel>`;
+  return html`<terminal-panel .workspace=${context.workspace} .autoStart=${context.terminalAutoStart}></terminal-panel>`;
 }
 
 function renderGit(context: WorkspacePanelContext): TemplateResult {

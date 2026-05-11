@@ -65,6 +65,7 @@ export class PiWebApp extends LitElement {
   private readonly keyboard = new KeyboardShortcutDispatcher();
   private readonly realtime = new RealtimeSocket();
   private readonly activeTerminalIds = new Set<string>();
+  private terminalAutoStartWorkspaceId: string | undefined;
   private readonly plugins = createPluginRegistry();
   private readonly onPopState = () => void this.withChatScrollTransition(() => this.restoreRoute(false));
   private readonly onKeyDown = (event: KeyboardEvent) => {
@@ -151,6 +152,7 @@ export class PiWebApp extends LitElement {
   }
 
   private selectWorkspaceTool(tool: QualifiedContributionId) {
+    if (tool === "core:workspace.terminal") this.terminalAutoStartWorkspaceId = this.state.selectedWorkspace?.id;
     this.setState({ workspaceTool: tool, mainView: tool });
     this.updateUrl();
     this.refreshSelectedWorkspaceTool(tool);
@@ -172,6 +174,7 @@ export class PiWebApp extends LitElement {
 
   private handleWorkspaceChange(previous: AppState, next: AppState) {
     if (previous.selectedWorkspace?.id === next.selectedWorkspace?.id) return;
+    this.terminalAutoStartWorkspaceId = undefined;
     this.activeTerminalIds.clear();
     this.setState({ activeTerminalCount: 0 });
     if (next.selectedWorkspace === undefined) return;
@@ -235,7 +238,7 @@ export class PiWebApp extends LitElement {
 
   private renderWorkspacePanel(hideToolTabs = false) {
     const workspaceLabelItems = this.state.selectedWorkspace === undefined ? [] : this.plugins.getWorkspaceLabelItems(this.state, this.state.selectedWorkspace);
-    return html`<workspace-panel .workspace=${this.state.selectedWorkspace} .tool=${this.state.workspaceTool} .panels=${this.visibleWorkspacePanels()} .workspaceLabelItems=${workspaceLabelItems} .hideToolTabs=${hideToolTabs} .fileTree=${this.state.fileTree} .expandedDirs=${this.state.expandedDirs} .selectedFilePath=${this.state.selectedFilePath} .selectedFileContent=${this.state.selectedFileContent} .fileTreeStale=${this.state.fileTreeStale} .gitStatus=${this.state.gitStatus} .selectedDiffPath=${this.state.selectedDiffPath} .selectedDiff=${this.state.selectedDiff} .selectedStagedDiff=${this.state.selectedStagedDiff} .gitStale=${this.state.gitStale} .activeTerminalCount=${this.state.activeTerminalCount} .onSelectTool=${(tool: QualifiedContributionId) => { this.selectWorkspaceTool(tool); }} .onRefreshFiles=${() => this.files.refreshFiles()} .onExpandDir=${(path: string) => this.files.expandDir(path)} .onSelectFile=${(path: string) => this.files.selectFile(path)} .onRefreshGit=${() => this.git.refreshGit()} .onSelectDiff=${(path: string) => this.git.selectDiff(path)}></workspace-panel>`;
+    return html`<workspace-panel .workspace=${this.state.selectedWorkspace} .tool=${this.state.workspaceTool} .panels=${this.visibleWorkspacePanels()} .workspaceLabelItems=${workspaceLabelItems} .hideToolTabs=${hideToolTabs} .fileTree=${this.state.fileTree} .expandedDirs=${this.state.expandedDirs} .selectedFilePath=${this.state.selectedFilePath} .selectedFileContent=${this.state.selectedFileContent} .fileTreeStale=${this.state.fileTreeStale} .gitStatus=${this.state.gitStatus} .selectedDiffPath=${this.state.selectedDiffPath} .selectedDiff=${this.state.selectedDiff} .selectedStagedDiff=${this.state.selectedStagedDiff} .gitStale=${this.state.gitStale} .activeTerminalCount=${this.state.activeTerminalCount} .terminalAutoStart=${this.terminalAutoStartWorkspaceId === this.state.selectedWorkspace?.id} .onSelectTool=${(tool: QualifiedContributionId) => { this.selectWorkspaceTool(tool); }} .onRefreshFiles=${() => this.files.refreshFiles()} .onExpandDir=${(path: string) => this.files.expandDir(path)} .onSelectFile=${(path: string) => this.files.selectFile(path)} .onRefreshGit=${() => this.git.refreshGit()} .onSelectDiff=${(path: string) => this.git.selectDiff(path)}></workspace-panel>`;
   }
 
   private renderNavigationPanel(autoSwitchToChat: boolean) {
@@ -282,6 +285,7 @@ export class PiWebApp extends LitElement {
       selectedStagedDiff: this.state.selectedStagedDiff,
       gitStale: this.state.gitStale,
       activeTerminalCount: this.state.activeTerminalCount,
+      terminalAutoStart: this.terminalAutoStartWorkspaceId === workspace.id,
       onRefreshFiles: () => { void this.files.refreshFiles(); },
       onExpandDir: (path: string) => { void this.files.expandDir(path); },
       onSelectFile: (path: string) => { void this.files.selectFile(path); },

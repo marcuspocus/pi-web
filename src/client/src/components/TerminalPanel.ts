@@ -8,6 +8,7 @@ import { terminalSocket, terminalsApi, type TerminalInfo, type Workspace } from 
 @customElement("terminal-panel")
 export class TerminalPanel extends LitElement {
   @property({ attribute: false }) workspace: Workspace | undefined;
+  @property({ type: Boolean }) autoStart = false;
   @query(".terminal-host") private terminalHost?: HTMLDivElement;
   @state() private terminals: TerminalInfo[] = [];
   @state() private selectedId: string | undefined;
@@ -68,7 +69,7 @@ export class TerminalPanel extends LitElement {
       const terminals = await terminalsApi.terminals(this.workspace.projectId, this.workspace.id);
       this.terminals = terminals;
       this.selectedId = terminals.find((terminal) => !terminal.exited)?.id ?? terminals[0]?.id;
-      if (terminals.length === 0) await this.startTerminal();
+      if (terminals.length === 0 && this.autoStart) await this.startTerminal();
     } catch (error) {
       this.error = error instanceof Error ? error.message : String(error);
     } finally {
