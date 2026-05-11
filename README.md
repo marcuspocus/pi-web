@@ -53,6 +53,7 @@ This maps naturally to real development work:
 - View live session status: streaming, compaction, bash activity, token usage, cost, model, and context usage.
 - Send prompts, shell input, and supported commands through the Pi SDK path.
 - Reuse your existing Pi auth and model configuration from `~/.pi/agent`.
+- Extend the UI with trusted plugins that add actions, workspace panels, and workspace-label metadata. See [Plugin API](docs/plugins.md) for LLM-friendly plugin-building docs.
 
 ## Architecture
 
