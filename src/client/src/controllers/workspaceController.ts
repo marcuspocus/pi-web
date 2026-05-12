@@ -1,6 +1,7 @@
 import { api, type Project, type Workspace } from "../api";
 import type { GetState, RouteTarget, SetState, UpdateUrl } from "./types";
 import type { SessionController } from "./sessionController";
+import { InMemoryWorkspaceSelectionMemory, selectPreferredWorkspace, type WorkspaceSelectionMemory } from "./workspaceSelection";
 
 export class WorkspaceController {
   constructor(
@@ -8,6 +9,7 @@ export class WorkspaceController {
     private readonly setState: SetState,
     private readonly updateUrl: UpdateUrl,
     private readonly sessions: SessionController,
+    private readonly workspaceSelection: WorkspaceSelectionMemory = new InMemoryWorkspaceSelectionMemory(),
   ) {}
 
   clearSelection(options?: { updateUrl?: boolean | undefined }) {
@@ -16,13 +18,17 @@ export class WorkspaceController {
     if (options?.updateUrl !== false) this.updateUrl();
   }
 
+  forgetProject(projectId: string): void {
+    this.workspaceSelection.forgetProject(projectId);
+  }
+
   async selectProject(project: Project, target?: RouteTarget) {
     this.sessions.clearActiveSession();
     this.setState({ selectedProject: project, selectedWorkspace: undefined, sessions: [], workspaces: [], fileTree: [], expandedDirs: {}, selectedFilePath: undefined, selectedFileContent: undefined, fileTreeStale: false, gitStatus: undefined, selectedDiffPath: undefined, selectedDiff: undefined, selectedStagedDiff: undefined, gitStale: false, error: "" });
     try {
       const workspaces = await api.workspaces(project.id);
       this.setState({ workspaces });
-      const workspace = target?.workspaceId !== undefined && target.workspaceId !== "" ? workspaces.find((w) => w.id === target.workspaceId) : workspaces[0];
+      const workspace = selectPreferredWorkspace(workspaces, { targetWorkspaceId: target?.workspaceId, latestWorkspaceId: this.workspaceSelection.latestWorkspaceId(project.id) });
       if (workspace) await this.selectWorkspace(workspace, { sessionId: target?.sessionId, updateUrl: target?.updateUrl });
       else if (target?.updateUrl !== false) this.updateUrl();
     } catch (error) {
@@ -31,6 +37,7 @@ export class WorkspaceController {
   }
 
   async selectWorkspace(workspace: Workspace, target?: { sessionId?: string | undefined; updateUrl?: boolean | undefined }) {
+    this.workspaceSelection.rememberWorkspace(workspace);
     this.sessions.clearActiveSession();
     this.setState({ selectedWorkspace: workspace, sessions: [], fileTree: [], expandedDirs: {}, selectedFilePath: undefined, selectedFileContent: undefined, fileTreeStale: false, gitStatus: undefined, selectedDiffPath: undefined, selectedDiff: undefined, selectedStagedDiff: undefined, gitStale: false, error: "" });
     try {
