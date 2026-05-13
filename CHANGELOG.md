@@ -1,5 +1,12 @@
 # @jmfederico/pi-web
 
+## 1.202605.5
+
+### Patch Changes
+
+- a807569: Fix browser terminal sizing so progress/status lines update in place instead of wrapping when the PTY size has not caught up with the visible terminal.
+- d064c4e: Improve package gallery discoverability for remote web UI and browser control plane searches.
+
 ## 1.202605.4
 
 ### Patch Changes
