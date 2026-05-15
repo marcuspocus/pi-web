@@ -2,9 +2,9 @@ const themeButtons = document.querySelectorAll("[data-theme-toggle]");
 const themeStorageKey = "pi-web-theme";
 const systemPrefersLight = window.matchMedia("(prefers-color-scheme: light)");
 
-function storedTheme() {
+function storedThemeMode() {
   const theme = window.localStorage.getItem(themeStorageKey);
-  return theme === "light" || theme === "dark" ? theme : undefined;
+  return theme === "light" || theme === "dark" || theme === "auto" ? theme : "auto";
 }
 
 function activeTheme() {
@@ -15,28 +15,49 @@ function activeTheme() {
       : "dark";
 }
 
-function updateThemeButtons(theme = activeTheme()) {
+function applyThemeMode(mode) {
+  if (mode === "light" || mode === "dark") {
+    document.documentElement.dataset.theme = mode;
+  } else {
+    delete document.documentElement.dataset.theme;
+  }
+  window.localStorage.setItem(themeStorageKey, mode);
+  updateThemeButtons(mode);
+}
+
+function updateThemeButtons(mode = storedThemeMode()) {
+  const active = activeTheme();
   for (const button of themeButtons) {
-    button.dataset.theme = theme;
-    button.setAttribute("aria-pressed", theme === "light" ? "true" : "false");
+    button.dataset.theme = mode;
+    button.dataset.activeTheme = active;
     const icon = button.querySelector("[data-theme-icon]");
     const label = button.querySelector("[data-theme-label]");
-    if (icon !== null) icon.textContent = theme === "light" ? "☀" : "☾";
-    if (label !== null) label.textContent = theme === "light" ? "Light" : "Dark";
+    if (mode === "auto") {
+      button.setAttribute("aria-label", `Theme: Auto (${active}). Click to use dark theme.`);
+      if (icon !== null) icon.textContent = "◐";
+      if (label !== null) label.textContent = "Auto";
+    } else if (mode === "light") {
+      button.setAttribute("aria-label", "Theme: Light. Click to use automatic theme.");
+      if (icon !== null) icon.textContent = "☀";
+      if (label !== null) label.textContent = "Light";
+    } else {
+      button.setAttribute("aria-label", "Theme: Dark. Click to use light theme.");
+      if (icon !== null) icon.textContent = "☾";
+      if (label !== null) label.textContent = "Dark";
+    }
   }
 }
 
 updateThemeButtons();
 systemPrefersLight.addEventListener("change", () => {
-  if (storedTheme() === undefined) updateThemeButtons();
+  if (storedThemeMode() === "auto") updateThemeButtons("auto");
 });
 
 for (const button of themeButtons) {
   button.addEventListener("click", () => {
-    const nextTheme = activeTheme() === "light" ? "dark" : "light";
-    document.documentElement.dataset.theme = nextTheme;
-    window.localStorage.setItem(themeStorageKey, nextTheme);
-    updateThemeButtons(nextTheme);
+    const currentMode = storedThemeMode();
+    const nextTheme = currentMode === "auto" ? "dark" : currentMode === "dark" ? "light" : "auto";
+    applyThemeMode(nextTheme);
   });
 }
 
