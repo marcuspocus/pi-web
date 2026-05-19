@@ -1,5 +1,13 @@
 # @jmfederico/pi-web
 
+## 1.202605.10
+
+### Patch Changes
+
+- fb9e524: Build bundled Pi Web plugins from TypeScript during development and release packaging while shipping browser-loadable JavaScript modules.
+- b637add: Update static file serving and WebSocket dependencies to patched releases, removing controlled dependency warnings and npm audit findings.
+- ebe5639: Show active session and terminal activity on project and workspace rows so background work is visible from navigation.
+
 ## 1.202605.9
 
 ### Patch Changes
