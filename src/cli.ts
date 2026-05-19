@@ -4,6 +4,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { homedir, userInfo } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { defaultPiWebConfigPath, examplePiWebConfig } from "./config.js";
 
 const serviceDir = join(homedir(), ".config", "systemd", "user");
@@ -24,6 +25,16 @@ interface ServiceShell {
   executable: string;
   detected?: string;
   fallback: boolean;
+}
+
+interface ServiceExecutable {
+  command: string;
+  checks: Check[];
+}
+
+interface ServiceExecutables {
+  sessiond: ServiceExecutable;
+  web: ServiceExecutable;
 }
 
 function run(command: string, args: string[], options: { check?: boolean } = {}): number {
@@ -99,14 +110,12 @@ function systemdEscape(value: string): string {
   return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
 }
 
-function sessiondExec(): string {
-  const configured = process.env["PI_WEB_SESSIOND_EXEC"]?.trim();
-  return configured === undefined || configured === "" ? "pi-web-sessiond" : configured;
+function packageRootPath(): string {
+  return dirname(dirname(fileURLToPath(import.meta.url)));
 }
 
-function webExec(): string {
-  const configured = process.env["PI_WEB_SERVER_EXEC"]?.trim();
-  return configured === undefined || configured === "" ? "pi-web-server" : configured;
+function packageEntrypointPath(name: "server" | "sessiond"): string {
+  return join(packageRootPath(), "dist", "server", name === "server" ? "index.js" : "sessiond.js");
 }
 
 function detectServiceShell(): ServiceShell {
@@ -136,6 +145,59 @@ function systemdServiceShellQuote(value: string): string {
   return serviceShellQuote(value.replaceAll("%", "%%").replaceAll("$", "$$"));
 }
 
+function checkSucceeds(command: string[]): boolean {
+  const [bin, ...args] = command;
+  return bin !== undefined && capture(bin, args).status === 0;
+}
+
+function serviceShellCanFindCommand(command: string): boolean {
+  if (!checkSucceeds(serviceShellCommand(commandCheck(command)))) return false;
+  return checkSucceeds(systemdUserServiceShellCommand(commandCheck(command)));
+}
+
+function readableFileCheck(path: string): string {
+  const quoted = serviceShellQuote(path);
+  return `test -r ${quoted} && printf '%s\\n' ${quoted}`;
+}
+
+function commandExecutable(command: string): ServiceExecutable {
+  const shell = serviceShellLabel();
+  return {
+    command,
+    checks: [
+      [`${shell} can find ${command}`, serviceShellCommand(commandCheck(command))],
+      [`systemd user ${shell} can find ${command}`, systemdUserServiceShellCommand(commandCheck(command))],
+    ],
+  };
+}
+
+function bundledExecutable(command: string, entrypointPath: string): ServiceExecutable {
+  const shell = serviceShellLabel();
+  const check = readableFileCheck(entrypointPath);
+  return {
+    command: `node ${serviceShellQuote(entrypointPath)}`,
+    checks: [
+      [`${shell} can access bundled ${command} entrypoint`, serviceShellCommand(check)],
+      [`systemd user ${shell} can access bundled ${command} entrypoint`, systemdUserServiceShellCommand(check)],
+    ],
+  };
+}
+
+function serviceExecutable(envName: "PI_WEB_SERVER_EXEC" | "PI_WEB_SESSIOND_EXEC", command: string, entrypointPath: string): ServiceExecutable {
+  const configured = process.env[envName]?.trim();
+  if (configured !== undefined && configured !== "") return { command: configured, checks: [] };
+  if (serviceShellCanFindCommand(command)) return commandExecutable(command);
+  if (existsSync(entrypointPath)) return bundledExecutable(command, entrypointPath);
+  return commandExecutable(command);
+}
+
+function resolveServiceExecutables(): ServiceExecutables {
+  return {
+    sessiond: serviceExecutable("PI_WEB_SESSIOND_EXEC", "pi-web-sessiond", packageEntrypointPath("sessiond")),
+    web: serviceExecutable("PI_WEB_SERVER_EXEC", "pi-web-server", packageEntrypointPath("server")),
+  };
+}
+
 function describeServiceShell(): string {
   const shell = detectServiceShell();
   if (shell.fallback) {
@@ -146,13 +208,13 @@ function describeServiceShell(): string {
   return shell.detected === undefined ? shell.name : `${shell.name} (${shell.detected})`;
 }
 
-function sessiondUnit(): string {
+function sessiondUnit(executables: ServiceExecutables): string {
   return `[Unit]
 Description=Pi Web session daemon
 
 [Service]
 Type=simple
-ExecStart=${serviceShellExecPrefix()} ${systemdServiceShellQuote(`exec ${sessiondExec()}`)}
+ExecStart=${serviceShellExecPrefix()} ${systemdServiceShellQuote(`exec ${executables.sessiond.command}`)}
 Restart=on-failure
 RestartSec=2
 
@@ -161,7 +223,7 @@ WantedBy=default.target
 `;
 }
 
-function webUnit(options: InstallOptions): string {
+function webUnit(options: InstallOptions, executables: ServiceExecutables): string {
   const configEnvironment = options.config === undefined ? "" : `Environment="PI_WEB_CONFIG=${systemdEscape(resolve(options.config))}"\n`;
   return `[Unit]
 Description=Pi Web server
@@ -170,7 +232,7 @@ Wants=${sessiondServiceName}
 
 [Service]
 Type=simple
-${configEnvironment}ExecStart=${serviceShellExecPrefix()} ${systemdServiceShellQuote(`exec ${webExec()}`)}
+${configEnvironment}ExecStart=${serviceShellExecPrefix()} ${systemdServiceShellQuote(`exec ${executables.web.command}`)}
 Restart=on-failure
 RestartSec=2
 
@@ -191,18 +253,19 @@ async function writeInitialConfig(options: InstallOptions): Promise<string> {
 async function install(args: string[]): Promise<void> {
   const options = parseInstallOptions(args);
 
+  const executables = resolveServiceExecutables();
   console.log("Running Pi Web install preflight checks...");
   console.log(`Service shell: ${describeServiceShell()}`);
-  if (!runChecks(installPreflightChecks())) {
+  if (!runChecks(installPreflightChecks(executables))) {
     printPathSetupAdvice();
-    throw new Error("Install preflight checks failed. Fix the missing commands above, then run `pi-web doctor` for more detail.");
+    throw new Error("Install preflight checks failed. Fix the failed checks above, then run `pi-web doctor` for more detail.");
   }
 
   const configPath = await writeInitialConfig(options);
 
   await mkdir(serviceDir, { recursive: true });
-  await writeFile(join(serviceDir, sessiondServiceName), sessiondUnit());
-  await writeFile(join(serviceDir, webServiceName), webUnit(options));
+  await writeFile(join(serviceDir, sessiondServiceName), sessiondUnit(executables));
+  await writeFile(join(serviceDir, webServiceName), webUnit(options, executables));
 
   run("systemctl", ["--user", "daemon-reload"], { check: true });
   run("systemctl", ["--user", "enable", "--now", sessiondServiceName], { check: true });
@@ -271,32 +334,22 @@ function nodeVersionCheck(): string {
   ].join(" && ");
 }
 
-function installPreflightChecks(): Check[] {
+function installPreflightChecks(executables: ServiceExecutables = resolveServiceExecutables()): Check[] {
   const shell = serviceShellLabel();
-  const checks: Check[] = [
+  return [
     ["systemctl --user", ["systemctl", "--user", "--version"]],
     [`${shell} can find node >= 22`, serviceShellCommand(nodeVersionCheck())],
     [`systemd user ${shell} can find node >= 22`, systemdUserServiceShellCommand(nodeVersionCheck())],
+    ...executables.web.checks,
+    ...executables.sessiond.checks,
   ];
-  if (process.env["PI_WEB_SERVER_EXEC"] === undefined) {
-    checks.push(
-      [`${shell} can find pi-web-server`, serviceShellCommand(commandCheck("pi-web-server"))],
-      [`systemd user ${shell} can find pi-web-server`, systemdUserServiceShellCommand(commandCheck("pi-web-server"))],
-    );
-  }
-  if (process.env["PI_WEB_SESSIOND_EXEC"] === undefined) {
-    checks.push(
-      [`${shell} can find pi-web-sessiond`, serviceShellCommand(commandCheck("pi-web-sessiond"))],
-      [`systemd user ${shell} can find pi-web-sessiond`, systemdUserServiceShellCommand(commandCheck("pi-web-sessiond"))],
-    );
-  }
-  return checks;
 }
 
 function doctorChecks(): Check[] {
   const shell = serviceShellLabel();
+  const executables = resolveServiceExecutables();
   return [
-    ...installPreflightChecks(),
+    ...installPreflightChecks(executables),
     [`${shell} can find npm`, serviceShellCommand(commandCheck("npm"))],
     [`${shell} can find pi`, serviceShellCommand(commandCheck("pi"))],
     [`systemd user ${shell} can find pi`, systemdUserServiceShellCommand(commandCheck("pi"))],
@@ -355,6 +408,7 @@ function doctor(): void {
 
   if (!ok) {
     console.log("\nIf a command works in your terminal but fails here, make sure your service shell login files set PATH the same way.");
+    console.log("If a bundled entrypoint is not accessible, reinstall or update the Pi Web package.");
     printPathSetupAdvice();
     process.exitCode = 1;
   }

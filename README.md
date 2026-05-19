@@ -183,7 +183,7 @@ Then in Pi:
 /pi-web doctor
 ```
 
-The Pi command is a convenience wrapper around the same service installer. `/pi-web logs` shows the last 100 journal lines; use `pi-web logs` in a shell when you want to follow logs continuously.
+The Pi command is a convenience wrapper around the same service installer. When installed this way, the service installer can use Pi Web's package-local server entrypoints, so `pi-web-server` and `pi-web-sessiond` do not need to be on your shell `PATH`. `/pi-web logs` shows the last 100 journal lines; use `pi-web logs` in a shell when you want to follow logs continuously.
 
 Advanced users may run the binaries however they prefer:
 
