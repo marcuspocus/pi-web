@@ -37,6 +37,7 @@ export class TerminalPanel extends LitElement {
   private suppressTerminalInput = false;
   private observedCwd: string | undefined;
   private loadedCwd: string | undefined;
+  private autoStartConsumedCwd: string | undefined;
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -65,6 +66,7 @@ export class TerminalPanel extends LitElement {
     if (cwd !== this.observedCwd) {
       this.observedCwd = cwd;
       this.loadedCwd = undefined;
+      this.autoStartConsumedCwd = undefined;
       this.terminals = [];
       this.selectedId = undefined;
       this.disposeTerminalView();
@@ -99,10 +101,11 @@ export class TerminalPanel extends LitElement {
     this.error = undefined;
     try {
       if (this.workspace === undefined) return;
+      const shouldAutoStart = this.consumeAutoStart();
       const terminals = await terminalsApi.terminals(this.workspace.projectId, this.workspace.id);
       this.terminals = terminals;
       this.selectPreferredLoadedTerminal({ replaceUrl: true });
-      if (terminals.length === 0 && this.autoStart) await this.startTerminal();
+      if (terminals.length === 0 && shouldAutoStart) await this.startTerminal();
     } catch (error) {
       this.error = error instanceof Error ? error.message : String(error);
     } finally {
@@ -113,6 +116,13 @@ export class TerminalPanel extends LitElement {
   private applyRequestedTerminalSelection(): void {
     if (this.selectedTerminalId !== undefined && !this.terminals.some((terminal) => terminal.id === this.selectedTerminalId)) return;
     this.selectPreferredLoadedTerminal({ replaceUrl: true });
+  }
+
+  private consumeAutoStart(): boolean {
+    const cwd = this.workspace?.path;
+    if (!this.autoStart || cwd === undefined || this.autoStartConsumedCwd === cwd) return false;
+    this.autoStartConsumedCwd = cwd;
+    return true;
   }
 
   private shouldReloadForRequestedTerminal(): boolean {
