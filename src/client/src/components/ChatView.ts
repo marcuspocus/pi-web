@@ -1,9 +1,11 @@
 import { LitElement, html } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
+import { ChatDisclosureController } from "../chatDisclosure";
 import { groupChatMessages, summarizeChatGroup, type ChatGroup } from "../chatGroups";
 import { capturePrependScrollAnchor, PREPEND_RESTORE_SETTLE_FRAMES, restorePrependScrollAnchor, type PrependScrollAnchor } from "../chatScrollAnchoring";
 import { shouldRequestEarlierMessages } from "../chatHistoryLoading";
+import { ChatScrollController, distanceFromScrollBottom, findFirstVisibleArticle, isNearScrollBottom, type ChatScrollPosition, type ChatScrollRestoreResult } from "../chatScrollPosition";
 import type { SessionActivity, SessionStatus } from "../api";
 import type { ChatLine, ChatPart } from "./shared";
 import { chatStyles } from "./shared";
@@ -25,14 +27,6 @@ const partialStreamNoticeBodies = [
 
 function randomPartialStreamNoticeBody(): string {
   return partialStreamNoticeBodies[Math.floor(Math.random() * partialStreamNoticeBodies.length)] ?? partialStreamNoticeBodies[0];
-}
-
-function isScrollPosition(value: unknown): value is { index?: number; key?: string; offset: number } {
-  return typeof value === "object"
-    && value !== null
-    && "offset" in value
-    && typeof value.offset === "number"
-    && (("key" in value && typeof value.key === "string") || ("index" in value && typeof value.index === "number"));
 }
 
 function clampPercent(value: number): number {
@@ -60,13 +54,13 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) onLoadMore?: () => void;
   @query(".chat") private chat?: HTMLDivElement;
   @state() private pinnedToBottom = true;
-  @state() private openGroupKeys = new Set<string>();
   @state() private expandedMetaKey: string | undefined;
   @state() private copiedMessageKey: string | undefined;
   @state() private currentConversationIndex: number | undefined;
+  private readonly disclosures = new ChatDisclosureController();
+  private readonly scrollController = new ChatScrollController();
   private suppressScrollSave = false;
   private suppressLoadMoreRequests = false;
-  private saveScrollTimer?: number;
   private loadMoreCheckFrame: number | undefined;
   private scrollToBottomFrame: number | undefined;
   private conversationRailFrame: number | undefined;
@@ -79,6 +73,10 @@ export class ChatView extends LitElement {
   private lastScrollTop = 0;
   private lastClientHeight = 0;
   private touchStartY: number | undefined;
+  private pendingScrollRestoreSessionId: string | undefined;
+  private pendingScrollRestorePosition: ChatScrollPosition | undefined;
+  private restoreScrollFrame: number | undefined;
+  private prependRestoreToken = 0;
   @state() private loadMoreRequested = false;
   private readonly onViewportResize = () => {
     if (this.pinnedToBottom) this.scrollToBottom();
@@ -96,7 +94,9 @@ export class ChatView extends LitElement {
   }
 
   override disconnectedCallback(): void {
-    window.clearTimeout(this.saveScrollTimer);
+    this.scrollController.dispose();
+    this.prependRestoreToken += 1;
+    if (this.restoreScrollFrame !== undefined) cancelAnimationFrame(this.restoreScrollFrame);
     if (this.loadMoreCheckFrame !== undefined) cancelAnimationFrame(this.loadMoreCheckFrame);
     if (this.scrollToBottomFrame !== undefined) cancelAnimationFrame(this.scrollToBottomFrame);
     if (this.conversationRailFrame !== undefined) cancelAnimationFrame(this.conversationRailFrame);
@@ -105,8 +105,22 @@ export class ChatView extends LitElement {
     super.disconnectedCallback();
   }
 
+  private prepareSessionUiState(): void {
+    this.disclosures.syncSession(this.sessionId);
+    this.scrollController.clearScheduledSave();
+    this.suppressScrollSave = false;
+    this.suppressLoadMoreRequests = false;
+    this.pendingScrollRestoreSessionId = undefined;
+    this.pendingScrollRestorePosition = undefined;
+    this.prependRestoreToken += 1;
+    if (this.restoreScrollFrame !== undefined) {
+      cancelAnimationFrame(this.restoreScrollFrame);
+      this.restoreScrollFrame = undefined;
+    }
+  }
+
   protected override willUpdate(changed: Map<string, unknown>): void {
-    if (changed.has("sessionId")) this.openGroupKeys = this.readOpenGroupKeys();
+    if (changed.has("sessionId")) this.prepareSessionUiState();
     if (changed.has("isReceivingPartialStream") || (changed.has("sessionId") && this.isReceivingPartialStream)) this.syncPartialStreamNoticeBody();
     if (changed.has("messages")) this.pinnedToBottom = this.pinnedToBottom && (this.didChatHeightChange() || this.isNearBottom());
   }
@@ -122,6 +136,7 @@ export class ChatView extends LitElement {
     if (changed.has("hasMore") && !this.hasMore) this.loadMoreRequested = false;
     if (!changed.has("sessionId") && changed.has("messages") && this.pinnedToBottom) this.scrollToBottom();
     if (changed.has("messages") || changed.has("messageStart") || changed.has("messageTotal") || changed.has("hasMore") || changed.has("loadingMore")) this.scheduleConversationRailUpdate();
+    if (changed.has("messages") || changed.has("messageStart") || changed.has("hasMore") || changed.has("loadingMore")) this.continuePendingScrollRestore();
     if (changed.has("messages") || changed.has("hasMore") || changed.has("loadingMore")) this.requestLoadMoreIfNeeded();
   }
 
@@ -134,7 +149,7 @@ export class ChatView extends LitElement {
           ${this.renderHistoryBoundary()}
           ${repeat(
             groups,
-            (group) => group.kind === "message" ? this.messageAnchorKey(group.index) : this.groupAnchorKey(group.endIndex),
+            (group) => group.kind === "message" ? this.messageAnchorKey(group.index) : this.groupRenderKey(group.startIndex),
             (group, index) => group.kind === "message"
               ? this.renderMessage(group.message, group.index)
               : this.renderMessageGroup(group.messages, group.startIndex, group.endIndex, this.isLiveTailGroup(groups, index)),
@@ -285,7 +300,7 @@ export class ChatView extends LitElement {
     const toolOnly = this.isToolExecutionOnlyMessage(message);
     return html`
       ${this.renderScrollMarker(this.messageScrollMarkerId(index))}
-      <article class=${toolOnly ? "msg tool-execution-shell" : `msg ${message.role}`} data-index=${index} data-anchor-key=${this.messageAnchorKey(index)}>
+      <article class=${toolOnly ? "msg tool-execution-shell" : `msg ${message.role}`} data-index=${index} data-end-index=${index} data-anchor-key=${this.messageAnchorKey(index)}>
         ${toolOnly ? null : this.renderMessageHeader(message, String(index))}
         ${message.parts.map((part) => this.renderPart(part, message))}
       </article>
@@ -296,14 +311,14 @@ export class ChatView extends LitElement {
     return message.role === "tool" && message.parts.length > 0 && message.parts.every((part) => part.type === "toolExecution");
   }
 
-  private renderMessageGroup(messages: ChatLine[], startIndex: number, endIndex: number, autoOpen: boolean) {
-    const key = this.groupKey(endIndex);
-    const open = autoOpen || this.openGroupKeys.has(key);
+  private renderMessageGroup(messages: ChatLine[], startIndex: number, endIndex: number, defaultOpen: boolean) {
+    const disclosureKey = this.groupDisclosureKey(startIndex, endIndex, defaultOpen);
+    const open = this.disclosures.isOpen(disclosureKey, defaultOpen);
     return html`
       ${this.renderScrollMarker(this.groupScrollMarkerId(endIndex))}
-      <details class=${autoOpen ? "msg event-group live" : "msg event-group"} data-index=${startIndex} data-anchor-key=${this.groupAnchorKey(endIndex)} ?open=${open} @toggle=${(event: Event) => { this.onGroupToggle(key, event, autoOpen); }}>
+      <details class=${defaultOpen ? "msg event-group live" : "msg event-group"} data-index=${startIndex} data-end-index=${endIndex} data-anchor-key=${this.groupAnchorKey(startIndex)} ?open=${open} @toggle=${(event: Event) => { this.onGroupToggle(disclosureKey, event, defaultOpen); }}>
         <summary>
-          <b class="label">${autoOpen ? "live events" : "events"}</b>
+          <b class="label">${defaultOpen ? "live events" : "events"}</b>
           <span>${summarizeChatGroup(messages)}</span>
         </summary>
         <div class="group-body">
@@ -452,17 +467,10 @@ export class ChatView extends LitElement {
     return null;
   }
 
-  private onGroupToggle(key: string, event: Event, autoOpen: boolean) {
+  private onGroupToggle(key: string, event: Event, defaultOpen: boolean) {
     const details = event.currentTarget;
     if (!(details instanceof HTMLDetailsElement)) return;
-    if (autoOpen && details.open) return;
-    const openGroupKeys = new Set(this.openGroupKeys);
-    const wasOpen = openGroupKeys.has(key);
-    if (details.open) openGroupKeys.add(key);
-    else openGroupKeys.delete(key);
-    if (openGroupKeys.has(key) === wasOpen) return;
-    this.openGroupKeys = openGroupKeys;
-    this.saveOpenGroupKeys();
+    if (this.disclosures.applyToggle(key, details.open, defaultOpen)) this.requestUpdate();
   }
 
   private onScroll() {
@@ -541,22 +549,18 @@ export class ChatView extends LitElement {
   private isNearBottom(): boolean {
     const chat = this.chat;
     if (!chat) return true;
-    return this.distanceFromBottom(chat) < 48;
+    return isNearScrollBottom(chat);
   }
 
   private isAtBottom(): boolean {
     const chat = this.chat;
     if (!chat) return true;
-    return this.distanceFromBottom(chat) < 2;
+    return distanceFromScrollBottom(chat) < 2;
   }
 
   private canScrollUp(): boolean {
     const chat = this.chat;
     return chat !== undefined && chat.scrollTop > 0;
-  }
-
-  private distanceFromBottom(chat: HTMLDivElement): number {
-    return chat.scrollHeight - chat.scrollTop - chat.clientHeight;
   }
 
   private scrollToBottom() {
@@ -574,34 +578,60 @@ export class ChatView extends LitElement {
   }
 
   restoreScrollPosition() {
-    requestAnimationFrame(() => {
-      const chat = this.chat;
-      const stored = this.readStoredScrollPosition();
-      if (!chat || !stored) {
-        this.withSuppressedScrollSave(() => {
-          if (chat) {
-            chat.scrollTop = chat.scrollHeight;
-            this.lastScrollTop = chat.scrollTop;
-          }
-        });
-        return;
-      }
-
-      const article = this.articleAt(stored);
-      if (!article) {
-        this.withSuppressedScrollSave(() => {
-          chat.scrollTop = chat.scrollHeight;
-          this.lastScrollTop = chat.scrollTop;
-        });
-        return;
-      }
+    const sessionId = this.sessionId;
+    if (this.restoreScrollFrame !== undefined) cancelAnimationFrame(this.restoreScrollFrame);
+    this.restoreScrollFrame = requestAnimationFrame(() => {
+      this.restoreScrollFrame = undefined;
+      if (this.sessionId !== sessionId) return;
       this.withSuppressedScrollSave(() => {
-        const chatTop = chat.getBoundingClientRect().top;
-        const currentOffset = article.getBoundingClientRect().top - chatTop;
-        chat.scrollTop += currentOffset - stored.offset;
-        this.lastScrollTop = chat.scrollTop;
+        const result = this.scrollController.restorePosition(sessionId, this.chat, this.articles(), { fallbackToBottom: !this.hasMore });
+        this.handleScrollRestoreResult(sessionId, result);
       });
     });
+  }
+
+  private continuePendingScrollRestore(): void {
+    const sessionId = this.pendingScrollRestoreSessionId;
+    const position = this.pendingScrollRestorePosition;
+    if (sessionId === undefined || position === undefined || sessionId !== this.sessionId || this.restoreScrollFrame !== undefined) return;
+    this.restoreScrollFrame = requestAnimationFrame(() => {
+      this.restoreScrollFrame = undefined;
+      if (this.sessionId !== sessionId) return;
+      this.withSuppressedScrollSave(() => {
+        const result = this.scrollController.restoreExplicitPosition(position, this.chat, this.articles(), { fallbackToBottom: !this.hasMore });
+        this.handleScrollRestoreResult(sessionId, result);
+      });
+    });
+  }
+
+  private handleScrollRestoreResult(sessionId: string, result: ChatScrollRestoreResult): void {
+    this.syncScrollMetrics();
+    if (result.status !== "missing") {
+      if (result.status === "restored" || result.status === "bottom") this.cancelPrependRestore();
+      this.pendingScrollRestoreSessionId = undefined;
+      this.pendingScrollRestorePosition = undefined;
+      return;
+    }
+
+    this.pendingScrollRestoreSessionId = sessionId;
+    this.pendingScrollRestorePosition = result.position;
+    const chat = this.chat;
+    if (chat === undefined || !this.hasMore || this.loadingMore) return;
+    chat.scrollTop = 0;
+    this.syncScrollMetrics();
+    this.requestLoadMore();
+  }
+
+  private syncScrollMetrics(): void {
+    const chat = this.chat;
+    if (chat === undefined) return;
+    this.lastScrollTop = chat.scrollTop;
+    this.lastClientHeight = chat.clientHeight;
+  }
+
+  private cancelPrependRestore(): void {
+    this.prependRestoreToken += 1;
+    this.suppressLoadMoreRequests = false;
   }
 
   capturePrependScrollAnchor(): PrependScrollAnchor | undefined {
@@ -614,10 +644,12 @@ export class ChatView extends LitElement {
     if (!this.chat || !anchor) return;
     this.suppressLoadMoreRequests = true;
     this.suppressScrollSave = true;
+    const token = this.prependRestoreToken + 1;
+    this.prependRestoreToken = token;
     let frames = 0;
     const settle = () => {
       const chat = this.chat;
-      if (!chat) return;
+      if (!chat || token !== this.prependRestoreToken) return;
       restorePrependScrollAnchor(chat, anchor, anchor.markerId === undefined ? undefined : this.scrollMarkerAt(anchor.markerId));
       this.lastScrollTop = chat.scrollTop;
       frames += 1;
@@ -629,6 +661,7 @@ export class ChatView extends LitElement {
         return;
       }
       requestAnimationFrame(() => {
+        if (token !== this.prependRestoreToken) return;
         this.suppressScrollSave = false;
         this.suppressLoadMoreRequests = false;
       });
@@ -637,33 +670,15 @@ export class ChatView extends LitElement {
   }
 
   saveScrollPosition(sessionId = this.sessionId) {
-    const chat = this.chat;
-    if (!chat || !sessionId) return;
-    try {
-      if (this.isNearBottom()) {
-        localStorage.removeItem(this.storageKey(sessionId));
-        return;
-      }
-      const firstVisible = this.firstVisibleArticle();
-      if (!firstVisible) {
-        localStorage.removeItem(this.storageKey(sessionId));
-        return;
-      }
-      const chatTop = chat.getBoundingClientRect().top;
-      const position = {
-        key: firstVisible.dataset["anchorKey"],
-        index: Number(firstVisible.dataset["index"] ?? 0),
-        offset: firstVisible.getBoundingClientRect().top - chatTop,
-      };
-      localStorage.setItem(this.storageKey(sessionId), JSON.stringify(position));
-    } catch {
-      // Ignore storage failures; scrolling should keep working without persistence.
-    }
+    if (!sessionId) return;
+    this.scrollController.savePosition(sessionId, this.chat, this.articles());
   }
 
   private scheduleScrollPositionSave() {
-    window.clearTimeout(this.saveScrollTimer);
-    this.saveScrollTimer = window.setTimeout(() => { this.saveScrollPosition(); }, 180);
+    const sessionId = this.sessionId;
+    this.scrollController.scheduleSave(sessionId, (scheduledSessionId) => {
+      if (this.sessionId === scheduledSessionId) this.saveScrollPosition(scheduledSessionId);
+    });
   }
 
   private scheduleConversationRailUpdate(): void {
@@ -689,19 +704,6 @@ export class ChatView extends LitElement {
     this.currentConversationIndex = clampNumber(this.pinnedToBottom ? this.messageStart + this.messages.length - 1 : this.messageStart, 0, Math.max(0, total - 1));
   }
 
-  private readStoredScrollPosition(): { index?: number; key?: string; offset: number } | undefined {
-    if (this.sessionId === "") return undefined;
-    try {
-      const raw = localStorage.getItem(this.storageKey());
-      if (raw === null || raw === "") return undefined;
-      const value: unknown = JSON.parse(raw);
-      if (!isScrollPosition(value)) return undefined;
-      return value;
-    } catch {
-      return undefined;
-    }
-  }
-
   private scrollMarkers(): HTMLElement[] {
     return Array.from(this.renderRoot.querySelectorAll<HTMLElement>(".scroll-marker"));
   }
@@ -712,22 +714,9 @@ export class ChatView extends LitElement {
 
   private firstVisibleArticle(): HTMLElement | undefined {
     const chat = this.chat;
-    if (!chat) return undefined;
-    const firstVisible = (selector: string) => {
-      const chatRect = chat.getBoundingClientRect();
-      return Array.from(this.renderRoot.querySelectorAll<HTMLElement>(selector)).find((article) => {
-        const rect = article.getBoundingClientRect();
-        return rect.bottom >= chatRect.top && rect.top <= chatRect.bottom;
-      });
-    };
-    return firstVisible("article.msg") ?? firstVisible("article.msg, details.msg");
-  }
-
-  private articleAt(position: { index?: number; key?: string }): HTMLElement | undefined {
-    const articles = this.articles();
-    const keyed = position.key === undefined ? undefined : articles.find((article) => article.dataset["anchorKey"] === position.key);
-    if (keyed !== undefined) return keyed;
-    return articles.find((article) => Number(article.dataset["index"]) === position.index);
+    if (chat === undefined) return undefined;
+    const primaryArticles = Array.from(this.renderRoot.querySelectorAll<HTMLElement>("article.msg"));
+    return findFirstVisibleArticle(chat, primaryArticles) ?? findFirstVisibleArticle(chat, this.articles());
   }
 
   private articles(): HTMLElement[] {
@@ -744,34 +733,20 @@ export class ChatView extends LitElement {
     });
   }
 
-  private withSuppressedLoadMoreRequests(callback: () => void) {
-    this.suppressLoadMoreRequests = true;
-    callback();
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        this.suppressLoadMoreRequests = false;
-      });
-    });
-  }
-
-  private storageKey(sessionId = this.sessionId): string {
-    return `pi-web:chat-scroll:${sessionId}`;
-  }
-
-  private groupStorageKey(sessionId = this.sessionId): string {
-    return `pi-web:chat-groups:${sessionId}`;
-  }
-
-  private groupKey(endIndex: number): string {
-    return `${this.sessionId}:${String(endIndex)}`;
+  private groupDisclosureKey(startIndex: number, endIndex: number, defaultOpen: boolean): string {
+    return defaultOpen ? `${this.sessionId}:live:${String(startIndex)}` : `${this.sessionId}:${String(endIndex)}`;
   }
 
   private messageAnchorKey(index: number): string {
     return `m:${String(index)}`;
   }
 
-  private groupAnchorKey(endIndex: number): string {
-    return `g:${String(endIndex)}`;
+  private groupRenderKey(startIndex: number): string {
+    return `g:${String(startIndex)}`;
+  }
+
+  private groupAnchorKey(startIndex: number): string {
+    return `g:${String(startIndex)}`;
   }
 
   private messageScrollMarkerId(index: number): string {
@@ -780,26 +755,6 @@ export class ChatView extends LitElement {
 
   private groupScrollMarkerId(endIndex: number): string {
     return `g:${String(endIndex)}`;
-  }
-
-  private readOpenGroupKeys(): Set<string> {
-    if (this.sessionId === "") return new Set();
-    try {
-      const raw = localStorage.getItem(this.groupStorageKey());
-      const value: unknown = raw !== null && raw !== "" ? JSON.parse(raw) : [];
-      return new Set(Array.isArray(value) ? value.filter((item) => typeof item === "string") : []);
-    } catch {
-      return new Set();
-    }
-  }
-
-  private saveOpenGroupKeys(): void {
-    if (this.sessionId === "") return;
-    try {
-      localStorage.setItem(this.groupStorageKey(), JSON.stringify([...this.openGroupKeys]));
-    } catch {
-      // Ignore storage failures; group expansion should still work for this render.
-    }
   }
 
   static override styles = chatStyles;
