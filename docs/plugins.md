@@ -139,16 +139,14 @@ A separate plugin package should:
 - use a local symlink into `~/.pi-web/plugins/<plugin-id>` while developing;
 - document any private Pi Web APIs it dogfoods until those APIs become stable plugin runtime helpers.
 
-Typical local development loop:
+Typical local development loop from this repository:
 
 ```bash
-npm --workspace @jmfederico/pi-web-actions run dev
-mkdir -p ~/.pi-web/plugins
-ln -s /path/to/pi-web/plugins/actions ~/.pi-web/plugins/actions
+npm run dev
 curl http://127.0.0.1:8504/pi-web-plugins/manifest.json
 ```
 
-The main Pi Web `dev:web` script watches bundled plugins in `pi-web-plugins/`. Separate workspace packages should run their own package-level watcher when needed.
+The main Pi Web `dev` command watches bundled plugins in `pi-web-plugins/`, builds/watches separate plugin packages in `plugins/*`, and discovers those source-checkout plugin packages without symlinking them into `~/.pi-web/plugins`.
 
 ## Discovery and packaging
 

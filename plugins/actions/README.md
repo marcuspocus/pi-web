@@ -47,12 +47,10 @@ After editing `.pi-web/actions.json`, click **Refresh** in the Actions tab or re
 
 ## Development in this monorepo
 
-This package is developed as a separate npm package, not as a bundled Pi Web plugin. For local development:
+This package is developed as a separate npm package, not as a bundled Pi Web plugin. From the Pi Web repository, the single root dev command builds, watches, and auto-loads this package without symlinking it into `~/.pi-web/plugins`:
 
 ```bash
-npm --workspace @jmfederico/pi-web-actions run dev
-mkdir -p ~/.pi-web/plugins
-ln -s /srv/dev/pi-web/plugins/actions ~/.pi-web/plugins/actions
+npm run dev
 ```
 
 Then reload Pi Web and check discovery:

@@ -84,7 +84,7 @@ export class PiWebPluginService {
   constructor(options: PiWebPluginServiceOptions = {}) {
     const cwd = options.cwd ?? process.cwd();
     const agentDir = options.agentDir ?? getAgentDir();
-    this.roots = options.roots ?? defaultPluginRoots();
+    this.roots = options.roots ?? defaultPluginRoots(cwd);
     this.packageProvider = options.packageProvider === false ? undefined : options.packageProvider ?? new DefaultPiPackageProvider(cwd, agentDir);
   }
 
@@ -148,17 +148,24 @@ export class PiWebPluginService {
   }
 }
 
-function defaultPluginRoots(): LocalPluginRoot[] {
+function defaultPluginRoots(cwd: string): LocalPluginRoot[] {
   const moduleDir = dirname(fileURLToPath(import.meta.url));
   const packageRoot = join(moduleDir, "..", "..");
   return [
     { path: bundledPluginRoot(packageRoot), source: "bundled", scope: "bundled" },
+    ...sourceCheckoutPluginRoots(cwd),
     { path: join(piWebDataDir(), "plugins"), source: "local", scope: "local" },
   ];
 }
 
 function bundledPluginRoot(packageRoot: string): string {
   return join(packageRoot, "dist", "pi-web-plugins");
+}
+
+function sourceCheckoutPluginRoots(cwd: string): LocalPluginRoot[] {
+  const pluginsRoot = join(cwd, "plugins");
+  if (!existsSync(join(cwd, "src", "server", "index.ts")) || !existsSync(pluginsRoot)) return [];
+  return [{ path: pluginsRoot, source: "dev", scope: "local" }];
 }
 
 async function discoverLocalRoot(root: LocalPluginRoot): Promise<PluginRecord[]> {

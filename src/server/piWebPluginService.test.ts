@@ -54,6 +54,23 @@ describe("PiWebPluginService", () => {
     expect(manifest.plugins[0]?.module).toMatch(/^\/pi-web-plugins\/review\/dist\/review\.js\?v=\d+$/u);
   });
 
+  it("discovers source checkout plugin packages without symlinks", async () => {
+    await mkdir(join(tempDir, "src", "server"), { recursive: true });
+    await writeFile(join(tempDir, "src", "server", "index.ts"), "export {};\n");
+    await writePlugin(join(tempDir, "plugins", "source-dev"), {
+      packageJson: { piWeb: { plugins: [{ id: "source-dev", module: "dist/pi-web-plugin.js" }] } },
+      files: { "dist/pi-web-plugin.js": "export default { apiVersion: 1, name: 'Source Dev', activate: () => ({ contributions: {} }) };" },
+    });
+
+    const service = new PiWebPluginService({ cwd: tempDir, packageProvider: false });
+
+    const manifest = await service.manifest();
+    expect(manifest.plugins).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "source-dev", source: "dev", scope: "local" }),
+    ]));
+    await expect(service.readAsset("source-dev", "dist/pi-web-plugin.js")).resolves.toBeDefined();
+  });
+
   it("discovers local plugins through symlinks for development", async () => {
     const pluginDir = join(tempDir, "dev-plugin");
     await writePlugin(pluginDir, {
