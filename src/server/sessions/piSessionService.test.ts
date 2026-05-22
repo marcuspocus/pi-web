@@ -206,6 +206,46 @@ describe("PiSessionService", () => {
     await service.dispose();
   });
 
+  it("archives a session subtree within the root workspace", async () => {
+    const archivedInputs: string[] = [];
+    const root = sessionRecord("root");
+    const directChild = { ...sessionRecord("direct-child"), path: "/sessions/direct-child.jsonl", parentSessionPath: root.path };
+    const archivedChild = { ...sessionRecord("archived-child"), path: "/sessions/archived-child.jsonl", parentSessionPath: root.path };
+    const grandchild = { ...sessionRecord("grandchild"), path: "/sessions/grandchild.jsonl", parentSessionPath: archivedChild.path };
+    const otherWorkspaceChild = { ...sessionRecord("other-child", "/other"), path: "/sessions/other-child.jsonl", parentSessionPath: root.path };
+    const fake = fakeRuntime("root", { sessionFile: root.path });
+    const service = new PiSessionService(new CapturingSessionEventHub(), {
+      createAgentRuntime: runtimeCreator(fake.runtime),
+      archiveStore: {
+        list: () => Promise.resolve([{ sessionId: "archived-child", cwd: "/workspace", archivedAt: "2026-01-02T00:00:00.000Z", originalPath: archivedChild.path, archivePath: "/archive/archived-child.jsonl", created: "2026-01-01T00:00:00.000Z", modified: "2026-01-01T00:01:00.000Z", messageCount: 1, firstMessage: "archived", parentSessionPath: root.path }]),
+        get: () => Promise.resolve(undefined),
+        archive: (input) => {
+          archivedInputs.push(input.sessionId);
+          return Promise.resolve({ sessionId: input.sessionId, cwd: input.cwd, archivedAt: "2026-01-03T00:00:00.000Z" });
+        },
+        restore: () => Promise.resolve(),
+        isArchived: () => Promise.resolve(false),
+      },
+      sessionManager: {
+        create: () => fakeSessionManager(),
+        list: (cwd) => Promise.resolve(cwd === "/workspace" ? [root, directChild, archivedChild, grandchild] : [otherWorkspaceChild]),
+        listAll: () => Promise.resolve([root, directChild, archivedChild, grandchild, otherWorkspaceChild]),
+        open: () => fakeSessionManager(),
+      },
+      heartbeatIntervalMs: 60_000,
+    });
+
+    await expect(service.archiveTree("root")).resolves.toEqual({
+      archived: true,
+      sessionIds: ["root", "direct-child", "grandchild"],
+      archivedCount: 3,
+      skippedAlreadyArchivedCount: 1,
+    });
+    expect(archivedInputs).toEqual(["root", "direct-child", "grandchild"]);
+
+    await service.dispose();
+  });
+
   it("reconciles workspace activity when listing only archived sessions", async () => {
     const reconciliations: { cwd: string; sessionIds: string[] }[] = [];
     const service = new PiSessionService(new CapturingSessionEventHub(), {

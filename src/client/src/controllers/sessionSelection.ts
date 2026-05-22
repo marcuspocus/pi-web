@@ -47,12 +47,22 @@ export type ArchiveSelectionChange =
   | { type: "clear" };
 
 export function markSessionArchived(sessions: SessionInfo[], sessionId: string, archivedAt: string): SessionInfo[] {
-  return sessions.map((session) => session.id === sessionId ? { ...session, archived: true, archivedAt } : session);
+  return markSessionsArchived(sessions, [sessionId], archivedAt);
+}
+
+export function markSessionsArchived(sessions: SessionInfo[], sessionIds: readonly string[], archivedAt: string): SessionInfo[] {
+  const archivedIds = new Set(sessionIds);
+  return sessions.map((session) => archivedIds.has(session.id) ? { ...session, archived: true, archivedAt } : session);
 }
 
 export function selectionAfterArchivingSession(sessions: SessionInfo[], selectedSessionId: string | undefined, archivedSessionId: string): ArchiveSelectionChange {
-  if (selectedSessionId !== archivedSessionId) return { type: "unchanged" };
+  return selectionAfterArchivingSessions(sessions, selectedSessionId, [archivedSessionId]);
+}
 
-  const nextSession = sessions.find((session) => session.id !== archivedSessionId && session.archived !== true);
+export function selectionAfterArchivingSessions(sessions: SessionInfo[], selectedSessionId: string | undefined, archivedSessionIds: readonly string[]): ArchiveSelectionChange {
+  if (selectedSessionId === undefined || !archivedSessionIds.includes(selectedSessionId)) return { type: "unchanged" };
+
+  const archivedIds = new Set(archivedSessionIds);
+  const nextSession = sessions.find((session) => !archivedIds.has(session.id) && session.archived !== true);
   return nextSession === undefined ? { type: "clear" } : { type: "select", session: nextSession };
 }

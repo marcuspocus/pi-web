@@ -71,6 +71,7 @@ export const sessionsApi = {
   abort: (sessionId: string) => request(`/api/sessions/${sessionId}/abort`, parseAborted, { method: "POST" }),
   stop: (sessionId: string) => request(`/api/sessions/${sessionId}/stop`, parseStopped, { method: "POST" }),
   archive: (sessionId: string) => request(`/api/sessions/${sessionId}/archive`, parseArchived, { method: "POST" }),
+  archiveWithDescendants: (sessionId: string) => request(`/api/sessions/${sessionId}/archive-tree`, parseArchived, { method: "POST" }),
   restore: (sessionId: string) => request(`/api/sessions/${sessionId}/restore`, parseRestored, { method: "POST" }),
   detachParent: (sessionId: string) => request(`/api/sessions/${sessionId}/detach-parent`, parseDetached, { method: "POST" }),
   authProviders: (options?: { mode?: "login" | "logout"; authType?: "oauth" | "api_key" }) => {

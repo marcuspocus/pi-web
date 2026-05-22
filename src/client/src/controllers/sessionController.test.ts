@@ -193,6 +193,32 @@ describe("SessionController", () => {
     expect(urlUpdates).toEqual([undefined]);
   });
 
+  it("archives selected session descendants and selects the next active session", async () => {
+    const childSession = { ...oldSession, id: "child-session", path: "/tmp/child-session.jsonl", parentSessionPath: oldSession.path };
+    const nextSession = { ...oldSession, id: "next-session", path: "/tmp/next-session.jsonl" };
+    let state: AppState = { ...initialAppState(), selectedWorkspace: workspace, sessions: [oldSession, childSession, nextSession] };
+    const api: typeof defaultApi = {
+      ...defaultApi,
+      archiveWithDescendants: () => Promise.resolve({ archived: true, sessionIds: [oldSession.id, childSession.id], archivedCount: 2, skippedAlreadyArchivedCount: 0 }),
+      messages: () => Promise.resolve(emptyPage),
+      status: (sessionId) => Promise.resolve(status(sessionId)),
+    };
+    const controller = new SessionController(
+      () => state,
+      (patch) => { state = { ...state, ...patch }; },
+      () => undefined,
+      new InMemorySessionSelectionMemory(),
+      { api, socket: new FakeSocket() },
+    );
+
+    await controller.selectSession(oldSession, { updateUrl: false });
+    await controller.archiveSessionWithDescendants(oldSession);
+
+    expect(state.sessions.find((session) => session.id === oldSession.id)).toMatchObject({ archived: true });
+    expect(state.sessions.find((session) => session.id === childSession.id)).toMatchObject({ archived: true });
+    expect(state.selectedSession?.id).toBe(nextSession.id);
+  });
+
   it("forgets archived selections when the archived section collapse clears selection", async () => {
     const archivedSession = { ...oldSession, archived: true, archivedAt: "later" };
     let state: AppState = { ...initialAppState(), selectedWorkspace: workspace, sessions: [archivedSession] };

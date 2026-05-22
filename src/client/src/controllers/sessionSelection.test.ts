@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SessionInfo } from "../api";
-import { InMemorySessionSelectionMemory, markSessionArchived, selectPreferredSession, selectionAfterArchivingSession, shouldDeselectAfterArchivedCollapse } from "./sessionSelection";
+import { InMemorySessionSelectionMemory, markSessionArchived, markSessionsArchived, selectPreferredSession, selectionAfterArchivingSession, selectionAfterArchivingSessions, shouldDeselectAfterArchivedCollapse } from "./sessionSelection";
 
 describe("selectPreferredSession", () => {
   it("prefers an explicit target session by id", () => {
@@ -78,6 +78,14 @@ describe("markSessionArchived", () => {
     expect(next).toEqual([{ ...sessions[0], archived: true, archivedAt: "later" }, sessions[1]]);
     expect(sessions[0]?.archived).toBeUndefined();
   });
+
+  it("marks multiple matching sessions archived", () => {
+    const sessions = [testSession("s1"), testSession("s2"), testSession("s3")];
+
+    const next = markSessionsArchived(sessions, ["s1", "s3"], "later");
+
+    expect(next).toEqual([{ ...sessions[0], archived: true, archivedAt: "later" }, sessions[1], { ...sessions[2], archived: true, archivedAt: "later" }]);
+  });
 });
 
 describe("shouldDeselectAfterArchivedCollapse", () => {
@@ -111,6 +119,10 @@ describe("selectionAfterArchivingSession", () => {
 
   it("clears selection when no active session remains", () => {
     expect(selectionAfterArchivingSession([testSession("s1")], "s1", "s1")).toEqual({ type: "clear" });
+  });
+
+  it("clears selection when archiving a selected subtree with no active sessions left", () => {
+    expect(selectionAfterArchivingSessions([testSession("s1"), testSession("s2")], "s2", ["s1", "s2"])).toEqual({ type: "clear" });
   });
 });
 

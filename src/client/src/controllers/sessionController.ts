@@ -5,7 +5,7 @@ import { clearDraft, moveDraft, saveDraft } from "../promptDraftStorage";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
 import { isShellInput } from "../inputModes";
 import { SessionSocket, type GlobalSessionEvent, type SessionUiEvent } from "../sessionSocket";
-import { InMemorySessionSelectionMemory, markSessionArchived, selectPreferredSession, selectionAfterArchivingSession, shouldDeselectAfterArchivedCollapse, type SessionSelectionMemory } from "./sessionSelection";
+import { InMemorySessionSelectionMemory, markSessionArchived, markSessionsArchived, selectPreferredSession, selectionAfterArchivingSession, selectionAfterArchivingSessions, shouldDeselectAfterArchivedCollapse, type SessionSelectionMemory } from "./sessionSelection";
 import type { GetState, SetState, UpdateUrl } from "./types";
 
 const MESSAGE_PAGE_SIZE = 100;
@@ -229,6 +229,23 @@ export class SessionController {
       const state = this.getState();
       const sessions = markSessionArchived(state.sessions, session.id, new Date().toISOString());
       const selectionChange = selectionAfterArchivingSession(sessions, state.selectedSession?.id, session.id);
+      this.setState({ sessions });
+
+      if (selectionChange.type === "select") await this.selectSession(selectionChange.session);
+      else if (selectionChange.type === "clear") this.deselectSession({ forgetRememberedSelection: true });
+    } catch (error) {
+      this.setState({ error: String(error) });
+    }
+  }
+
+  async archiveSessionWithDescendants(session = this.getState().selectedSession) {
+    if (!session || isCachedNewSessionInfo(session)) return;
+    try {
+      const response = await this.api.archiveWithDescendants(session.id);
+      const archivedIds = response.sessionIds !== undefined && response.sessionIds.length > 0 ? response.sessionIds : [session.id];
+      const state = this.getState();
+      const sessions = markSessionsArchived(state.sessions, archivedIds, new Date().toISOString());
+      const selectionChange = selectionAfterArchivingSessions(sessions, state.selectedSession?.id, archivedIds);
       this.setState({ sessions });
 
       if (selectionChange.type === "select") await this.selectSession(selectionChange.session);

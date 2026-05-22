@@ -2,6 +2,7 @@ export type {
   Project,
   Workspace,
   SessionInfo as ClientSession,
+  ArchiveSessionsResponse as ClientArchiveSessionsResponse,
   MessagePage as ClientMessagePage,
   SessionStatus as ClientSessionStatus,
   SessionModel as ClientSessionModel,

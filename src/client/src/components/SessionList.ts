@@ -40,6 +40,7 @@ export class SessionList extends LitElement {
     this.openMenuSessionId = undefined;
   };
   @property({ attribute: false }) onArchive?: (session: SessionInfo) => void;
+  @property({ attribute: false }) onArchiveWithDescendants?: (session: SessionInfo) => void;
   @property({ attribute: false }) onRestore?: (session: SessionInfo) => void;
   @property({ attribute: false }) onDelete?: (session: SessionInfo) => void;
   @property({ attribute: false }) onDetachParent?: (session: SessionInfo) => void;
@@ -71,13 +72,14 @@ export class SessionList extends LitElement {
     const activeRows = sessionRowsForActiveTree(this.sessions);
     const activeIds = new Set(activeRows.map((row) => row.session.id));
     const archivedRows = sessionRows(this.sessions.filter((session) => session.archived === true && !activeIds.has(session.id)));
+    const descendantCounts = unarchivedDescendantCounts(this.sessions);
     return html`
       <section>
         ${this.renderHeading(activeRows.length + archivedRows.length)}
-        ${this.collapsed ? null : activeRows.map((row) => this.renderSession(row))}
+        ${this.collapsed ? null : activeRows.map((row) => this.renderSession(row, descendantCounts.get(row.session.id) ?? 0))}
         ${this.collapsed ? null : archivedRows.length > 0 ? html`
           <h2 class="subheading"><button class="section-toggle" aria-expanded=${String(this.archivedExpanded)} @click=${() => { this.toggleArchived(); }}><span>${this.archivedExpanded ? "▾" : "▸"} Archived</span><small>${archivedRows.length}</small></button></h2>
-          ${this.archivedExpanded ? archivedRows.map((row) => this.renderSession(row)) : null}
+          ${this.archivedExpanded ? archivedRows.map((row) => this.renderSession(row, descendantCounts.get(row.session.id) ?? 0)) : null}
         ` : null}
       </section>
     `;
@@ -95,7 +97,7 @@ export class SessionList extends LitElement {
     `;
   }
 
-  private renderSession(row: SessionRow) {
+  private renderSession(row: SessionRow, descendantCount: number) {
     const { session } = row;
     const cappedDepth = Math.min(row.depth, 2);
     return html`
@@ -119,12 +121,20 @@ export class SessionList extends LitElement {
                 ? html`<button title="Delete browser-cached new session" @click=${() => { this.openMenuSessionId = undefined; this.onDelete?.(session); }}>Delete</button>`
                 : session.archived === true
                   ? html`<button title="Restore session" @click=${() => { this.openMenuSessionId = undefined; this.onRestore?.(session); }}>Restore</button>`
-                  : html`<button title="Archive session" @click=${() => { this.openMenuSessionId = undefined; this.onArchive?.(session); }}>Archive</button>`}
+                  : html`
+                    <button title="Archive session" @click=${() => { this.openMenuSessionId = undefined; this.onArchive?.(session); }}>Archive</button>
+                    ${descendantCount > 0 ? html`<button title="Archive this session and its descendants" @click=${() => { this.openMenuSessionId = undefined; this.confirmArchiveWithDescendants(session, descendantCount); }}>Archive with descendants (${descendantCount})</button>` : null}
+                  `}
             </div>
           ` : null}
         </div>
       </div>
     `;
+  }
+
+  private confirmArchiveWithDescendants(session: SessionInfo, descendantCount: number): void {
+    const noun = descendantCount === 1 ? "descendant session" : "descendant sessions";
+    if (confirm(`Archive “${sessionLabel(session)}” and ${String(descendantCount)} ${noun}?`)) this.onArchiveWithDescendants?.(session);
   }
 
   private toggleMenu(sessionId: string, target: EventTarget | null) {
@@ -155,6 +165,31 @@ export class SessionList extends LitElement {
   }
 
   static override styles = listStyles;
+}
+
+function unarchivedDescendantCounts(sessions: SessionInfo[]): Map<string, number> {
+  const childrenByParentPath = new Map<string, SessionInfo[]>();
+  for (const session of sessions) {
+    if (session.parentSessionPath === undefined) continue;
+    const children = childrenByParentPath.get(session.parentSessionPath) ?? [];
+    children.push(session);
+    childrenByParentPath.set(session.parentSessionPath, children);
+  }
+
+  const countFor = (session: SessionInfo, seenPaths: Set<string>): number => {
+    if (seenPaths.has(session.path)) return 0;
+    const nextSeenPaths = new Set(seenPaths);
+    nextSeenPaths.add(session.path);
+    let count = 0;
+    for (const child of childrenByParentPath.get(session.path) ?? []) {
+      if (nextSeenPaths.has(child.path)) continue;
+      if (child.archived !== true) count += 1;
+      count += countFor(child, nextSeenPaths);
+    }
+    return count;
+  };
+
+  return new Map(sessions.map((session) => [session.id, countFor(session, new Set())]));
 }
 
 function sessionRowsForActiveTree(sessions: SessionInfo[]): SessionRow[] {

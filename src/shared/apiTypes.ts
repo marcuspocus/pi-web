@@ -30,6 +30,13 @@ export interface SessionInfo {
   archivedAt?: string;
 }
 
+export interface ArchiveSessionsResponse {
+  archived: true;
+  sessionIds?: string[];
+  archivedCount?: number;
+  skippedAlreadyArchivedCount?: number;
+}
+
 export interface SessionActivity {
   sessionId: string;
   phase: "active" | "idle" | "error";

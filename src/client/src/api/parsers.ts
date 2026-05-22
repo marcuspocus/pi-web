@@ -1,4 +1,4 @@
-import type { AuthProviderOption, AuthProviderStatus, AuthProvidersResponse, AuthStatusSource, AuthType, CommandOption, CommandResult, FileContentResponse, FileSuggestion, FileTreeEntry, FileTreeResponse, GitDiffResponse, GitFileState, GitStatusFile, GitStatusResponse, MessagePage, ModelSelectionResponse, OAuthFlowState, PiWebComponentStatus, PiWebInstallationInfo, PiWebReleaseStatus, PiWebServiceComponent, PiWebStatusMessage, PiWebStatusResponse, PiWebStatusSeverity, Project, QueuedSessionMessage, SessionInfo, SessionModel, SessionStatus, SlashCommand, TerminalInfo, ThinkingLevel, ThinkingLevelsResponse, Workspace, WorkspaceActivity, WorkspaceActivityResponse } from "../../../shared/apiTypes";
+import type { ArchiveSessionsResponse, AuthProviderOption, AuthProviderStatus, AuthProvidersResponse, AuthStatusSource, AuthType, CommandOption, CommandResult, FileContentResponse, FileSuggestion, FileTreeEntry, FileTreeResponse, GitDiffResponse, GitFileState, GitStatusFile, GitStatusResponse, MessagePage, ModelSelectionResponse, OAuthFlowState, PiWebComponentStatus, PiWebInstallationInfo, PiWebReleaseStatus, PiWebServiceComponent, PiWebStatusMessage, PiWebStatusResponse, PiWebStatusSeverity, Project, QueuedSessionMessage, SessionInfo, SessionModel, SessionStatus, SlashCommand, TerminalInfo, ThinkingLevel, ThinkingLevelsResponse, Workspace, WorkspaceActivity, WorkspaceActivityResponse } from "../../../shared/apiTypes";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -43,6 +43,11 @@ export function arrayOf<T>(parse: (value: unknown) => T): (value: unknown) => T[
 
 function parseUnknownArray(value: unknown): unknown[] {
   if (!Array.isArray(value)) throw new Error("Expected array response");
+  return value;
+}
+
+function arrayOfString(value: unknown, key: string): string[] {
+  if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) throw new Error(`Expected string array field: ${key}`);
   return value;
 }
 
@@ -446,10 +451,18 @@ export function parseStopped(value: unknown): { stopped: true } {
   return { stopped: true };
 }
 
-export function parseArchived(value: unknown): { archived: true } {
+export function parseArchived(value: unknown): ArchiveSessionsResponse {
   const record = requireRecord(value);
   if (record["archived"] !== true) throw new Error("Expected archived response");
-  return { archived: true };
+  const sessionIds = record["sessionIds"] === undefined ? undefined : arrayOfString(record["sessionIds"], "sessionIds");
+  const archivedCount = optionalNumber(record, "archivedCount");
+  const skippedAlreadyArchivedCount = optionalNumber(record, "skippedAlreadyArchivedCount");
+  return {
+    archived: true,
+    ...(sessionIds === undefined ? {} : { sessionIds }),
+    ...(archivedCount === undefined ? {} : { archivedCount }),
+    ...(skippedAlreadyArchivedCount === undefined ? {} : { skippedAlreadyArchivedCount }),
+  };
 }
 
 export function parseRestored(value: unknown): { restored: true } {

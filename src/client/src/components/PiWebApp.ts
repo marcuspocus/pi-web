@@ -474,6 +474,7 @@ export class PiWebApp extends LitElement {
         .onStart=${() => openChatAfter(() => this.sessions.startSession())}
         .onSelect=${(session: SessionInfo) => openChatAfter(() => this.sessions.selectSession(session))}
         .onArchive=${(session: SessionInfo) => this.sessions.archiveSession(session)}
+        .onArchiveWithDescendants=${(session: SessionInfo) => this.sessions.archiveSessionWithDescendants(session)}
         .onRestore=${(session: SessionInfo) => openChatAfter(() => this.sessions.restoreSession(session))}
         .onDelete=${(session: SessionInfo) => this.sessions.deleteCachedNewSession(session)}
         .onDetachParent=${(session: SessionInfo) => this.sessions.detachParent(session)}

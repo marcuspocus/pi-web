@@ -13,12 +13,13 @@ import {
   type CreateAgentSessionRuntimeFactory,
   type EditToolDetails,
 } from "@earendil-works/pi-coding-agent";
-import type { ClientCommand, ClientCommandResult, ClientMessagePage, ClientSession, ClientSessionModel, ClientSessionStatus, ClientThinkingLevel, SessionUiEvent } from "../types.js";
+import type { ClientArchiveSessionsResponse, ClientCommand, ClientCommandResult, ClientMessagePage, ClientSession, ClientSessionModel, ClientSessionStatus, ClientThinkingLevel, SessionUiEvent } from "../types.js";
 import { pageMessagesAtSafeBoundary } from "./messagePaging.js";
 import type { SessionEventHub } from "../realtime/sessionEventHub.js";
 import { BUILTIN_COMMANDS } from "./builtinCommands.js";
 import { SessionCommandService } from "./sessionCommandService.js";
 import { SessionArchiveStore, type ArchivedSessionRecord, type ArchiveSessionInput } from "./sessionArchiveStore.js";
+import { findArchiveCandidateByIdOrPrefix, planSessionArchiveTree, type SessionArchiveTreeCandidate } from "./sessionArchiveTree.js";
 import type { ActiveSession } from "./sessionRuntimeStore.js";
 import type { AuthChange } from "./authService.js";
 import { fallbackSessionName, generateShortSessionName } from "./sessionNameGenerator.js";
@@ -46,6 +47,13 @@ interface PiSessionListEntry {
   name?: string;
   parentSessionPath?: string;
 }
+
+interface WorkspaceArchiveCandidate extends SessionArchiveTreeCandidate {
+  cwd: string;
+  listEntry?: PiSessionListEntry;
+  activeSession?: PiAgentSession;
+}
+
 type AgentModel = Model<Api>;
 type ModelRegistryInstance = ReturnType<typeof ModelRegistry.create>;
 
@@ -408,10 +416,30 @@ export class PiSessionService {
 
   async archive(sessionId: string): Promise<void> {
     const session = await this.getOrOpen(sessionId);
-    if (session.isStreaming || session.isCompacting || session.isBashRunning || session.pendingMessageCount > 0) throw new Error("Stop current session activity before archiving");
+    if (sessionHasActiveWork(session)) throw new Error("Stop current session activity before archiving");
     const archiveInput = await this.archiveInputForSession(session);
     await this.closeActive(session.sessionId);
     await this.archiveStore.archive(archiveInput);
+  }
+
+  async archiveTree(sessionId: string): Promise<ClientArchiveSessionsResponse> {
+    const session = await this.getOrOpen(sessionId);
+    const catalog = await this.workspaceArchiveCandidates(session.sessionManager.getCwd());
+    const root = findArchiveCandidateByIdOrPrefix(catalog, session.sessionId) ?? archiveCandidateFromActiveSession(session, false);
+    const plan = planSessionArchiveTree(root, catalog);
+    const busy = plan.targets.map((target) => target.activeSession).find((target) => target !== undefined && sessionHasActiveWork(target));
+    if (busy !== undefined) throw new Error(`Stop current session activity before archiving ${sessionDisplayName(busy)}`);
+
+    const archiveInputs = plan.unarchivedTargets.map((target) => archiveInputFromCandidate(target));
+    for (const input of archiveInputs) await this.closeActive(input.sessionId);
+    for (const input of archiveInputs) await this.archiveStore.archive(input);
+
+    return {
+      archived: true,
+      sessionIds: archiveInputs.map((input) => input.sessionId),
+      archivedCount: archiveInputs.length,
+      skippedAlreadyArchivedCount: plan.skippedAlreadyArchivedCount,
+    };
   }
 
   async restore(sessionId: string): Promise<void> {
@@ -465,16 +493,41 @@ export class PiSessionService {
     if (sessionFile === undefined || sessionFile === "") throw new Error("Session is not persisted");
     const listed = (await this.sessionManager.list(cwd)).find((candidate) => candidate.id === session.sessionId);
     if (listed !== undefined) return archiveInputFromListEntry(listed);
-    return {
-      sessionId: session.sessionId,
-      cwd,
-      path: sessionFile,
-      created: new Date().toISOString(),
-      modified: new Date().toISOString(),
-      messageCount: session.messages.length,
-      firstMessage: "",
-      ...(session.sessionName === undefined ? {} : { name: session.sessionName }),
-    };
+    return archiveInputFromActiveSession(session);
+  }
+
+  private async workspaceArchiveCandidates(cwd: string): Promise<WorkspaceArchiveCandidate[]> {
+    const [sessions, archivedRecords] = await Promise.all([this.sessionManager.list(cwd), this.archiveStore.list()]);
+    const candidates = new Map<string, WorkspaceArchiveCandidate>();
+    const archivedById = new Map<string, ArchivedSessionRecord>();
+
+    for (const record of archivedRecords) {
+      if (record.cwd === cwd) archivedById.set(record.sessionId, record);
+    }
+
+    for (const session of sessions) {
+      const archived = archivedById.get(session.id);
+      if (archived === undefined) candidates.set(session.id, archiveCandidateFromListEntry(session));
+      else {
+        const candidate = archiveCandidateFromArchivedRecord(archived, session);
+        if (candidate !== undefined) candidates.set(candidate.id, candidate);
+      }
+    }
+
+    for (const record of archivedById.values()) {
+      if (candidates.has(record.sessionId)) continue;
+      const candidate = archiveCandidateFromArchivedRecord(record, undefined);
+      if (candidate !== undefined) candidates.set(candidate.id, candidate);
+    }
+
+    for (const active of new Set(this.active.values())) {
+      const session = active.runtime.session;
+      if (session.sessionManager.getCwd() !== cwd || archivedById.has(session.sessionId)) continue;
+      const existing = candidates.get(session.sessionId);
+      candidates.set(session.sessionId, { ...(existing ?? archiveCandidateFromActiveSession(session, false)), activeSession: session });
+    }
+
+    return [...candidates.values()];
   }
 
   private async listSessionNames(cwd: string): Promise<string[]> {
@@ -740,6 +793,76 @@ function archiveInputFromListEntry(session: PiSessionListEntry): ArchiveSessionI
     ...(session.name === undefined ? {} : { name: session.name }),
     ...(session.parentSessionPath === undefined ? {} : { parentSessionPath: session.parentSessionPath }),
   };
+}
+
+function archiveInputFromActiveSession(session: PiAgentSession): ArchiveSessionInput {
+  const sessionFile = session.sessionFile;
+  if (sessionFile === undefined || sessionFile === "") throw new Error("Session is not persisted");
+  const parentSessionPath = session.sessionManager.getHeader?.()?.parentSession;
+  return {
+    sessionId: session.sessionId,
+    cwd: session.sessionManager.getCwd(),
+    path: sessionFile,
+    created: new Date().toISOString(),
+    modified: new Date().toISOString(),
+    messageCount: session.messages.length,
+    firstMessage: "",
+    ...(session.sessionName === undefined ? {} : { name: session.sessionName }),
+    ...(parentSessionPath === undefined ? {} : { parentSessionPath }),
+  };
+}
+
+function archiveCandidateFromListEntry(session: PiSessionListEntry): WorkspaceArchiveCandidate {
+  return {
+    id: session.id,
+    path: session.path,
+    cwd: session.cwd,
+    archived: false,
+    listEntry: session,
+    ...(session.parentSessionPath === undefined ? {} : { parentSessionPath: session.parentSessionPath }),
+  };
+}
+
+function archiveCandidateFromArchivedRecord(record: ArchivedSessionRecord, fallback: PiSessionListEntry | undefined): WorkspaceArchiveCandidate | undefined {
+  const path = record.originalPath ?? fallback?.path;
+  if (path === undefined) return undefined;
+  const parentSessionPath = record.parentSessionPath ?? fallback?.parentSessionPath;
+  return {
+    id: record.sessionId,
+    path,
+    cwd: record.cwd,
+    archived: true,
+    ...(fallback === undefined ? {} : { listEntry: fallback }),
+    ...(parentSessionPath === undefined ? {} : { parentSessionPath }),
+  };
+}
+
+function archiveCandidateFromActiveSession(session: PiAgentSession, archived: boolean): WorkspaceArchiveCandidate {
+  const sessionFile = session.sessionFile;
+  if (sessionFile === undefined || sessionFile === "") throw new Error("Session is not persisted");
+  const parentSessionPath = session.sessionManager.getHeader?.()?.parentSession;
+  return {
+    id: session.sessionId,
+    path: sessionFile,
+    cwd: session.sessionManager.getCwd(),
+    archived,
+    activeSession: session,
+    ...(parentSessionPath === undefined ? {} : { parentSessionPath }),
+  };
+}
+
+function archiveInputFromCandidate(candidate: WorkspaceArchiveCandidate): ArchiveSessionInput {
+  if (candidate.listEntry !== undefined) return archiveInputFromListEntry(candidate.listEntry);
+  if (candidate.activeSession !== undefined) return archiveInputFromActiveSession(candidate.activeSession);
+  throw new Error(`Session is not available for archiving: ${candidate.id}`);
+}
+
+function sessionHasActiveWork(session: PiAgentSession): boolean {
+  return session.isStreaming || session.isCompacting || session.isBashRunning || session.pendingMessageCount > 0;
+}
+
+function sessionDisplayName(session: PiAgentSession): string {
+  return session.sessionName ?? session.sessionId;
 }
 
 function clientSessionFromArchivedRecord(record: ArchivedSessionRecord, fallback: PiSessionListEntry | undefined): ClientSession | undefined {
