@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { api as defaultApi, type MessagePage, type SessionActivity, type SessionInfo, type SessionStatus, type Workspace } from "../api";
-import { loadCachedNewSessions, markCachedNewSessionInfo, rememberCachedNewSession } from "../cachedNewSessions";
+import { isCachedNewSessionInfo, loadCachedNewSessions, markCachedNewSessionInfo, rememberCachedNewSession } from "../cachedNewSessions";
 import { initialAppState, type AppState } from "../appState";
 import { loadDraft, saveDraft } from "../promptDraftStorage";
 import { SessionController, type SessionEventSocket } from "./sessionController";
@@ -118,6 +118,52 @@ describe("SessionController", () => {
     expect(state.activity).toBeUndefined();
     expect(state.sessionActivities[oldSession.id]).toBeUndefined();
     expect(state.sessionStatuses[oldSession.id]).toMatchObject({ sessionId: oldSession.id, isStreaming: false });
+  });
+
+  it("updates visible session message counts from live status events", () => {
+    let state: AppState = {
+      ...initialAppState(),
+      selectedSession: oldSession,
+      sessions: [oldSession],
+    };
+    const controller = new SessionController(
+      () => state,
+      (patch) => { state = { ...state, ...patch }; },
+      () => undefined,
+      undefined,
+      { socket: new FakeSocket() },
+    );
+
+    controller.applyGlobalEvent({ type: "status.update", status: { ...status(oldSession.id), messageCount: 3 } });
+
+    expect(state.sessions[0]?.messageCount).toBe(3);
+    expect(state.selectedSession?.messageCount).toBe(3);
+  });
+
+  it("keeps live message count updates when a cached new session becomes persisted", async () => {
+    const cachedSession = markCachedNewSessionInfo(oldSession);
+    let resolvePrompt: (() => void) | undefined;
+    let state: AppState = { ...initialAppState(), selectedWorkspace: workspace, selectedSession: cachedSession, sessions: [cachedSession] };
+    const api: typeof defaultApi = {
+      ...defaultApi,
+      prompt: () => new Promise<{ accepted: true }>((resolve) => { resolvePrompt = () => { resolve({ accepted: true }); }; }),
+    };
+    const controller = new SessionController(
+      () => state,
+      (patch) => { state = { ...state, ...patch }; },
+      () => undefined,
+      undefined,
+      { api, socket: new FakeSocket() },
+    );
+
+    const send = controller.send("hello");
+    controller.applyGlobalEvent({ type: "status.update", status: { ...status(oldSession.id), messageCount: 1 } });
+    resolvePrompt?.();
+    await send;
+
+    expect(state.sessions[0]?.messageCount).toBe(1);
+    expect(isCachedNewSessionInfo(state.sessions[0])).toBe(false);
+    expect(state.selectedSession?.messageCount).toBe(1);
   });
 
   it("recreates missing browser-cached new sessions and moves their draft", async () => {

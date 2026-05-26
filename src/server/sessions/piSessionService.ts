@@ -761,6 +761,7 @@ export class PiSessionService {
       isBashRunning: session.isBashRunning,
       pendingMessageCount: session.pendingMessageCount,
       queuedMessages: queuedMessagesFromSession(session),
+      messageCount: session.messages.length,
       tokens: stats.tokens,
       cost: stats.cost,
       ...(contextUsage === undefined ? {} : { contextUsage }),

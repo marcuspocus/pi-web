@@ -361,6 +361,7 @@ describe("PiSessionService", () => {
 
   it("includes queued message details in session status", async () => {
     const fake = fakeRuntime("status-session", {
+      messages: [{ role: "user", content: "hello" }, { role: "assistant", content: "hi" }],
       pendingMessageCount: 2,
       getSteeringMessages: () => ["adjust this turn"],
       getFollowUpMessages: () => ["then do this"],
@@ -374,6 +375,7 @@ describe("PiSessionService", () => {
     await expect(service.status("status-session")).resolves.toMatchObject({
       pendingMessageCount: 2,
       queuedMessages: [{ kind: "steer", text: "adjust this turn" }, { kind: "followUp", text: "then do this" }],
+      messageCount: 2,
     });
     await service.dispose();
   });

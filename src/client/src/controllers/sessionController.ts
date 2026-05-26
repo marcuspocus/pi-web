@@ -1,4 +1,5 @@
 import { api as defaultApi, type CommandResult, type SessionActivity, type SessionInfo, type SessionStatus, type ThinkingLevel } from "../api";
+import type { AppState } from "../appState";
 import { forgetCachedNewSession, isCachedNewSessionInfo, markCachedNewSessionInfo, rememberCachedNewSession, stripCachedNewSessionMarker } from "../cachedNewSessions";
 import { textMessage } from "../chatMessages";
 import { clearDraft, moveDraft, saveDraft } from "../promptDraftStorage";
@@ -417,7 +418,8 @@ export class SessionController {
 
   private markCachedNewSessionPersisted(session: SessionInfo): void {
     if (!isCachedNewSessionInfo(session)) return;
-    this.replaceSession(stripCachedNewSessionMarker(session));
+    const latest = this.getState().sessions.find((candidate) => candidate.id === session.id) ?? session;
+    this.replaceSession(stripCachedNewSessionMarker(latest));
   }
 
   private applyCommandResult(result: CommandResult) {
@@ -448,6 +450,7 @@ export class SessionController {
     const clearsStaleActivity = state.sessionActivities[status.sessionId]?.phase === "active" && !isSessionActive(status);
     this.setState({
       sessionStatuses: { ...state.sessionStatuses, [status.sessionId]: status },
+      ...sessionMessageCountPatch(state, status.sessionId, status.messageCount),
       ...(clearsStaleActivity ? { sessionActivities: omitSessionActivity(state.sessionActivities, status.sessionId) } : {}),
       status: state.selectedSession?.id === status.sessionId ? status : state.status,
       activity: state.selectedSession?.id === status.sessionId && clearsStaleActivity ? undefined : state.activity,
@@ -543,6 +546,23 @@ export class SessionController {
 
 function omitSessionActivity(activities: Record<string, SessionActivity>, sessionId: string): Record<string, SessionActivity> {
   return Object.fromEntries(Object.entries(activities).filter(([id]) => id !== sessionId));
+}
+
+function sessionMessageCountPatch(state: AppState, sessionId: string, messageCount: number | undefined): Pick<Partial<AppState>, "sessions" | "selectedSession"> {
+  if (messageCount === undefined) return {};
+
+  const sessionsChanged = state.sessions.some((session) => session.id === sessionId && session.messageCount !== messageCount);
+  const sessions = sessionsChanged
+    ? state.sessions.map((session) => session.id === sessionId ? { ...session, messageCount } : session)
+    : undefined;
+  const selectedSession = state.selectedSession?.id === sessionId && state.selectedSession.messageCount !== messageCount
+    ? { ...state.selectedSession, messageCount }
+    : state.selectedSession;
+
+  return {
+    ...(sessions === undefined ? {} : { sessions }),
+    ...(selectedSession !== state.selectedSession ? { selectedSession } : {}),
+  };
 }
 
 function isTranscriptEvent(event: SessionUiEvent): boolean {
