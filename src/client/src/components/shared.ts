@@ -101,6 +101,7 @@ export const appStyles = css`
   workspace-panel { min-width: 0; min-height: 0; border-left: 1px solid var(--pi-border); overflow: hidden; }
   @media (max-width: 1180px) {
     .shell { grid-template-columns: 340px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+    .shell.workspace-panel-collapsed { grid-template-columns: 340px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
     aside { grid-row: 1 / 3; }
     main { grid-column: 2; grid-row: 1 / 3; }
     .mobile-tabs-frame { display: flex; }
@@ -115,6 +116,7 @@ export const appStyles = css`
   }
   @media (max-width: 760px) {
     .shell { grid-template-columns: minmax(0, 1fr); }
+    .shell.workspace-panel-collapsed { grid-template-columns: minmax(0, 1fr); }
     aside { display: none; }
     main, .shell.workspace-view > workspace-panel { grid-column: 1; }
     .context-bar { display: flex; }
