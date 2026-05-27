@@ -109,7 +109,7 @@ export const appStyles = css`
     .shell.workspace-view > workspace-panel { grid-column: 2; grid-row: 2; display: flex; border-left: 0; }
     .shell:not(.workspace-view) > workspace-panel { display: none; }
     .shell.workspace-panel-collapsed > workspace-panel { display: none; }
-    .shell.workspace-panel-collapsed .expand-panel-strip { display: flex; }
+    .expand-panel-strip { display: none; }
     main.workspace-view chat-view, main.workspace-view prompt-editor, main.workspace-view status-bar,
     main.workspace-view .empty { display: none; }
     main.workspace-view { overflow: hidden; }
