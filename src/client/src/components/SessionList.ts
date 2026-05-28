@@ -76,11 +76,15 @@ export class SessionList extends LitElement {
     return html`
       <section>
         ${this.renderHeading(activeRows.length + archivedRows.length)}
-        ${this.collapsed ? null : activeRows.map((row) => this.renderSession(row, descendantCounts.get(row.session.id) ?? 0))}
-        ${this.collapsed ? null : archivedRows.length > 0 ? html`
-          <h2 class="subheading"><button class="section-toggle" aria-expanded=${String(this.archivedExpanded)} @click=${() => { this.toggleArchived(); }}><span>${this.archivedExpanded ? "▾" : "▸"} Archived</span><small>${archivedRows.length}</small></button></h2>
-          ${this.archivedExpanded ? archivedRows.map((row) => this.renderSession(row, descendantCounts.get(row.session.id) ?? 0)) : null}
-        ` : null}
+        ${this.collapsed ? null : html`
+          <div class="list-body">
+            ${activeRows.map((row) => this.renderSession(row, descendantCounts.get(row.session.id) ?? 0))}
+            ${archivedRows.length > 0 ? html`
+              <h2 class="subheading"><button class="section-toggle" aria-expanded=${String(this.archivedExpanded)} @click=${() => { this.toggleArchived(); }}><span>${this.archivedExpanded ? "▾" : "▸"} Archived</span><small>${archivedRows.length}</small></button></h2>
+              ${this.archivedExpanded ? archivedRows.map((row) => this.renderSession(row, descendantCounts.get(row.session.id) ?? 0)) : null}
+            ` : null}
+          </div>
+        `}
       </section>
     `;
   }

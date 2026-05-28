@@ -49,24 +49,28 @@ export class WorkspaceList extends LitElement {
     return html`
       <section>
         <h2>${this.renderHeading()}</h2>
-        ${this.collapsed ? null : this.workspaces.map((workspace) => {
-          const label = workspacePrimaryLabel(workspace);
-          const items = this.workspaceLabelItems(workspace);
-          return html`
-            <div
-              class=${`action-row workspace-row ${this.selected?.id === workspace.id ? "selected" : ""}`}
-              tabindex="0"
-              title=${label}
-              @click=${(event: MouseEvent) => { activateSelectableRow(event, () => this.onSelect?.(workspace)); }}
-              @keydown=${(event: KeyboardEvent) => { this.handleWorkspaceKeydown(event, workspace); }}
-            >
-              <div class="action-main">
-                ${this.renderWorkspaceMain(label, items, workspace)}
-              </div>
-              ${this.renderWorkspaceMenu(label, items, workspace)}
-            </div>
-          `;
-        })}
+        ${this.collapsed ? null : html`
+          <div class="list-body">
+            ${this.workspaces.map((workspace) => {
+              const label = workspacePrimaryLabel(workspace);
+              const items = this.workspaceLabelItems(workspace);
+              return html`
+                <div
+                  class=${`action-row workspace-row ${this.selected?.id === workspace.id ? "selected" : ""}`}
+                  tabindex="0"
+                  title=${label}
+                  @click=${(event: MouseEvent) => { activateSelectableRow(event, () => this.onSelect?.(workspace)); }}
+                  @keydown=${(event: KeyboardEvent) => { this.handleWorkspaceKeydown(event, workspace); }}
+                >
+                  <div class="action-main">
+                    ${this.renderWorkspaceMain(label, items, workspace)}
+                  </div>
+                  ${this.renderWorkspaceMenu(label, items, workspace)}
+                </div>
+              `;
+            })}
+          </div>
+        `}
       </section>
     `;
   }
