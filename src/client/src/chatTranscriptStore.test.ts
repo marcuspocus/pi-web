@@ -29,8 +29,24 @@ describe("ChatTranscriptStore", () => {
         { role: "assistant", parts: [{ type: "text", text: "hello" }] },
       ],
       messagePageStart: 0,
+      messagePageEnd: 2,
       messagePageTotal: 2,
     });
+  });
+
+  it("tracks the raw page end separately from normalized display messages", () => {
+    const store = new ChatTranscriptStore(new MemoryChatHistoryCache());
+
+    const view = store.mergeHistory("s1", page(0, 3, [
+      { role: "user", content: "run the tool" },
+      { role: "assistant", content: [{ type: "toolCall", id: "tool-1", name: "read", arguments: { path: "src/app.ts" } }] },
+      { role: "toolResult", toolCallId: "tool-1", toolName: "read", content: [{ type: "text", text: "ok" }] },
+    ]));
+
+    expect(view.messages).toHaveLength(2);
+    expect(view.messagePageStart).toBe(0);
+    expect(view.messagePageEnd).toBe(3);
+    expect(view.messagePageTotal).toBe(3);
   });
 
   it("keeps live streamed transcript state out of the raw history cache", () => {
@@ -51,6 +67,7 @@ describe("ChatTranscriptStore", () => {
         { role: "user", parts: [{ type: "text", text: "next" }] },
       ],
       messagePageStart: 0,
+      messagePageEnd: 3,
       messagePageTotal: 3,
     });
   });

@@ -43,6 +43,7 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) messages: ChatLine[] = [];
   @property() sessionId = "";
   @property({ type: Number }) messageStart = 0;
+  @property({ type: Number }) messageEnd = 0;
   @property({ type: Number }) messageTotal = 0;
   @property({ type: Boolean }) hasMore = false;
   @property({ type: Boolean }) loadingMore = false;
@@ -307,8 +308,13 @@ export class ChatView extends LitElement {
   private historyRangeLabel() {
     if (!this.messages.length || this.messageTotal <= 0) return null;
     const from = this.messageStart + 1;
-    const to = this.messageStart + this.messages.length;
-    return html`<small>Showing messages ${from}–${to} of ${this.messageTotal}</small>`;
+    const to = this.loadedRawMessageEnd();
+    const total = Math.max(this.messageTotal, to);
+    return html`<small>Showing messages ${from}–${to} of ${total}</small>`;
+  }
+
+  private loadedRawMessageEnd(): number {
+    return Math.max(this.messageEnd, this.messageStart + this.messages.length);
   }
 
   private renderMessage(message: ChatLine, index: number) {

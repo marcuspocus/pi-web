@@ -7,6 +7,9 @@ import type { SessionUiEvent } from "./sessionSocket";
 export interface ChatTranscriptView {
   messages: ChatLine[];
   messagePageStart: number;
+  // End offset in the raw transcript. Normalization may coalesce multiple raw
+  // entries into one displayed chat message, especially tool calls/results.
+  messagePageEnd: number;
   messagePageTotal: number;
 }
 
@@ -48,9 +51,11 @@ export class ChatTranscriptStore {
 }
 
 export function transcriptViewFromHistory(history: RawMessagePage | undefined): ChatTranscriptView {
+  const start = history?.start ?? 0;
   return {
     messages: normalizeMessages(history?.messages ?? []),
-    messagePageStart: history?.start ?? 0,
+    messagePageStart: start,
+    messagePageEnd: start + (history?.messages.length ?? 0),
     messagePageTotal: history?.total ?? 0,
   };
 }
