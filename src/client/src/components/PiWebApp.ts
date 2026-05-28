@@ -56,6 +56,7 @@ const VIEWPORT_POSITION_REPAIR_DELAY_MS = 250;
 @customElement("pi-web-app")
 export class PiWebApp extends LitElement {
   @state() private state: AppState = initialAppState();
+  @state() private navigationPanelCollapsed = false;
   @state() private workspacePanelCollapsed = false;
   @query("chat-view") private chatView?: ChatView;
   @query("prompt-editor") private promptEditor?: PromptEditor;
@@ -581,6 +582,32 @@ export class PiWebApp extends LitElement {
     `;
   }
 
+  private toggleNavigationPanelCollapse(): void {
+    this.navigationPanelCollapsed = !this.navigationPanelCollapsed;
+  }
+
+  private renderNavigationPanelEdgeControl() {
+    const collapsed = this.navigationPanelCollapsed;
+    const label = collapsed ? "Expand navigation panel" : "Collapse navigation panel";
+    return html`
+      <div class="navigation-panel-edge">
+        <button
+          type="button"
+          class="navigation-panel-edge-button"
+          title=${label}
+          aria-label=${label}
+          aria-controls="navigation-panel"
+          aria-expanded=${String(!collapsed)}
+          @click=${() => { this.toggleNavigationPanelCollapse(); }}
+        >${this.renderNavigationPanelEdgeIcon(collapsed)}</button>
+      </div>
+    `;
+  }
+
+  private renderNavigationPanelEdgeIcon(collapsed: boolean) {
+    return this.renderPanelEdgeIcon(collapsed ? "right" : "left", "navigation-panel-edge-icon");
+  }
+
   private toggleWorkspacePanelCollapse(): void {
     this.workspacePanelCollapsed = !this.workspacePanelCollapsed;
   }
@@ -604,8 +631,12 @@ export class PiWebApp extends LitElement {
   }
 
   private renderWorkspacePanelEdgeIcon(collapsed: boolean) {
-    const path = collapsed ? "M15 18l-6-6 6-6" : "M9 18l6-6-6-6";
-    return html`<svg class="workspace-panel-edge-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d=${path}/></svg>`;
+    return this.renderPanelEdgeIcon(collapsed ? "left" : "right", "workspace-panel-edge-icon");
+  }
+
+  private renderPanelEdgeIcon(direction: "left" | "right", className: string) {
+    const path = direction === "left" ? "M15 18l-6-6 6-6" : "M9 18l6-6-6-6";
+    return html`<svg class=${className} viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d=${path}/></svg>`;
   }
 
   private renderNavigationPanel(autoSwitchToChat: boolean) {
@@ -1286,8 +1317,9 @@ export class PiWebApp extends LitElement {
   override render() {
     const state = this.state;
     return html`
-      <div class=${`shell ${state.mainView === "navigation" ? "navigation-view" : state.mainView === "chat" ? "chat-view" : "workspace-view"}${this.workspacePanelCollapsed ? " workspace-panel-collapsed" : ""}`}>
-        <aside>${this.isMobileNavigationLayout ? null : this.renderNavigationPanel(false)}</aside>
+      <div class=${`shell ${state.mainView === "navigation" ? "navigation-view" : state.mainView === "chat" ? "chat-view" : "workspace-view"}${this.navigationPanelCollapsed ? " navigation-panel-collapsed" : ""}${this.workspacePanelCollapsed ? " workspace-panel-collapsed" : ""}`}>
+        <aside id="navigation-panel">${this.isMobileNavigationLayout ? null : this.renderNavigationPanel(false)}</aside>
+        ${this.renderNavigationPanelEdgeControl()}
         <main class=${state.mainView === "chat" ? "chat-view" : state.mainView === "navigation" ? "navigation-view" : "workspace-view"}>
           ${this.renderContextBar()}
           <div class=${this.mobileTabsFrameClass()}>
