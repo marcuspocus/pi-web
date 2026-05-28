@@ -45,7 +45,6 @@ export interface AppState {
   activeTerminalCount: number;
   selectedTerminalId: string | undefined;
   piWebStatus: PiWebStatusResponse | undefined;
-  workspacePanelCollapsed: boolean;
   error: string;
 }
 
@@ -134,7 +133,6 @@ export function initialAppState(): AppState {
     activeTerminalCount: 0,
     selectedTerminalId: undefined,
     piWebStatus: undefined,
-    workspacePanelCollapsed: false,
     error: "",
   };
 }

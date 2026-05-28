@@ -20,7 +20,6 @@ export class WorkspacePanel extends LitElement {
   @property({ attribute: false }) workspaceLabelItems: WorkspaceLabelItem[] = [];
   @property({ type: Boolean }) hideToolTabs = false;
   @property({ attribute: false }) onSelectTool: (tool: QualifiedContributionId) => void = () => undefined;
-  @property({ attribute: false }) onToggleCollapse: () => void = () => undefined;
   @query(".workspace-header-strip") private workspaceHeaderStrip?: HTMLElement | null;
   @state() private workspaceHeaderCanScrollLeft = false;
   @state() private workspaceHeaderCanScrollRight = false;
@@ -70,7 +69,6 @@ export class WorkspacePanel extends LitElement {
                 ${visiblePanels.map((panel) => html`
                   <button class=${selectedPanel?.id === panel.id ? "selected" : ""} @click=${() => { this.onSelectTool(panel.id); }}>${this.renderPanelTitle(panel, context)}</button>
                 `)}
-                <button class="collapse-button" title="Toggle Panel" aria-label="Toggle Panel" @click=${() => { this.onToggleCollapse(); }}>${this.renderCollapseIcon()}</button>
               </div>
             `}
             <small>${renderWorkspaceLabel(workspace.label, this.workspaceLabelItems, workspace.path)}</small>
@@ -92,10 +90,6 @@ export class WorkspacePanel extends LitElement {
     const badge = panel.badge?.(context);
     if (badge === undefined || badge === "") return html`${panel.title}`;
     return html`${panel.title} <span class="tab-badge">${badge}</span>`;
-  }
-
-  private renderCollapseIcon(): TemplateResult {
-    return html`<svg class="collapse-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 18l6-6-6-6"/></svg>`;
   }
 
   private renderEmptyState(state: WorkspacePanelEmptyState): TemplateResult {

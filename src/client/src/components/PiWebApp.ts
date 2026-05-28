@@ -55,6 +55,7 @@ const REFRESH_LONG_PRESS_MS = 550;
 @customElement("pi-web-app")
 export class PiWebApp extends LitElement {
   @state() private state: AppState = initialAppState();
+  @state() private workspacePanelCollapsed = false;
   @query("chat-view") private chatView?: ChatView;
   @query("prompt-editor") private promptEditor?: PromptEditor;
   @query(".context-items") private contextItems?: HTMLElement | null;
@@ -513,6 +514,7 @@ export class PiWebApp extends LitElement {
     const emptyState = workspace === undefined ? this.workspacePanelEmptyState() : undefined;
     return html`
       <workspace-panel
+        id="workspace-panel"
         .workspace=${workspace}
         .panelContext=${panelContext}
         .emptyState=${emptyState}
@@ -520,26 +522,35 @@ export class PiWebApp extends LitElement {
         .panels=${this.visibleWorkspacePanels()}
         .workspaceLabelItems=${workspaceLabelItems}
         .onSelectTool=${(tool: QualifiedContributionId) => { this.openWorkspaceTool(tool); }}
-        .onToggleCollapse=${() => { this.toggleWorkspacePanelCollapse(); }}
       ></workspace-panel>
     `;
   }
 
   private toggleWorkspacePanelCollapse(): void {
-    this.setState({ workspacePanelCollapsed: !this.state.workspacePanelCollapsed });
+    this.workspacePanelCollapsed = !this.workspacePanelCollapsed;
   }
 
-  private renderExpandWorkspacePanelButton() {
+  private renderWorkspacePanelEdgeControl() {
+    const collapsed = this.workspacePanelCollapsed;
+    const label = collapsed ? "Expand workspace panel" : "Collapse workspace panel";
     return html`
-      <div class="expand-panel-strip">
+      <div class="workspace-panel-edge">
         <button
-          class="expand-workspace-panel-button"
-          title="Toggle Panel"
-          aria-label="Toggle Panel"
+          type="button"
+          class="workspace-panel-edge-button"
+          title=${label}
+          aria-label=${label}
+          aria-controls="workspace-panel"
+          aria-expanded=${String(!collapsed)}
           @click=${() => { this.toggleWorkspacePanelCollapse(); }}
-        ><svg class="expand-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 18l-6-6 6-6"/></svg></button>
+        >${this.renderWorkspacePanelEdgeIcon(collapsed)}</button>
       </div>
     `;
+  }
+
+  private renderWorkspacePanelEdgeIcon(collapsed: boolean) {
+    const path = collapsed ? "M15 18l-6-6 6-6" : "M9 18l6-6-6-6";
+    return html`<svg class="workspace-panel-edge-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d=${path}/></svg>`;
   }
 
   private renderNavigationPanel(autoSwitchToChat: boolean) {
@@ -1220,11 +1231,10 @@ export class PiWebApp extends LitElement {
   override render() {
     const state = this.state;
     return html`
-      <div class=${`shell ${state.mainView === "navigation" ? "navigation-view" : state.mainView === "chat" ? "chat-view" : "workspace-view"}${state.workspacePanelCollapsed ? " workspace-panel-collapsed" : ""}`}>
+      <div class=${`shell ${state.mainView === "navigation" ? "navigation-view" : state.mainView === "chat" ? "chat-view" : "workspace-view"}${this.workspacePanelCollapsed ? " workspace-panel-collapsed" : ""}`}>
         <aside>${this.isMobileNavigationLayout ? null : this.renderNavigationPanel(false)}</aside>
         <main class=${state.mainView === "chat" ? "chat-view" : state.mainView === "navigation" ? "navigation-view" : "workspace-view"}>
           ${this.renderContextBar()}
-          ${state.workspacePanelCollapsed ? this.renderExpandWorkspacePanelButton() : null}
           <div class=${this.mobileTabsFrameClass()}>
             <div class="mobile-tabs" @scroll=${this.onMobileTabsScroll}>
               <button class=${state.mainView === "navigation" ? "mobile-navigation-tab selected" : "mobile-navigation-tab"} @click=${() => { this.selectMainView("navigation"); }}>Sessions</button>
@@ -1246,6 +1256,7 @@ export class PiWebApp extends LitElement {
             ${state.authDialog !== undefined ? html`<auth-dialog .state=${state.authDialog} .onChooseMethod=${(authType: "oauth" | "api_key") => { void this.auth.chooseLoginMethod(authType); }} .onSelectProvider=${(providerId: string, authType: "oauth" | "api_key") => { void this.auth.selectLoginProvider(providerId, authType); }} .onApiKeyInput=${(value: string) => { this.auth.updateApiKey(value); }} .onSaveApiKey=${() => { void this.auth.saveApiKey(); }} .onLogoutProvider=${(providerId: string) => { void this.auth.logoutProvider(providerId); }} .onOAuthInput=${(value: string) => { this.auth.updateOAuthInput(value); }} .onOAuthRespond=${(value?: string) => { void this.auth.respondOAuth(value); }} .onOAuthCancel=${() => { void this.auth.cancelOAuth(); }} .onCancel=${() => { this.auth.closeDialog(); }}></auth-dialog>` : null}
           ` : html`<div class="empty">${this.sessionEmptyMessage()}</div>`}
         </main>
+        ${this.renderWorkspacePanelEdgeControl()}
         ${this.renderWorkspacePanel()}
         ${state.actionPaletteOpen ? html`<action-palette .actions=${this.getActions()} .onRun=${(action: AppAction) => { this.setState({ actionPaletteOpen: false }); this.runAction(action); }} .onCancel=${() => { this.setState({ actionPaletteOpen: false }); }}></action-palette>` : null}
         ${state.projectDialogOpen ? html`<project-dialog .onSubmit=${(path: string, create: boolean) => this.projects.addProject(path, create)} .onCancel=${() => { this.setState({ projectDialogOpen: false }); }}></project-dialog>` : null}
