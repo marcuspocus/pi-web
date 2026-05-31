@@ -17,7 +17,7 @@ afterEach(async () => {
 });
 
 describe("listWorkspaceTree", () => {
-  it("lists visible entries with directories first, sorted by name", async () => {
+  it("lists entries with directories first, sorted by name", async () => {
     const root = await tempWorkspace();
     await mkdir(join(root, "z-dir"));
     await mkdir(join(root, "a-dir"));
@@ -32,7 +32,9 @@ describe("listWorkspaceTree", () => {
     expect(tree.path).toBe("");
     expect(tree.truncated).toBe(false);
     expect(tree.entries.map((entry) => [entry.name, entry.type])).toEqual([
+      [".git", "directory"],
       ["a-dir", "directory"],
+      ["node_modules", "directory"],
       ["z-dir", "directory"],
       ["a.txt", "file"],
       ["b.txt", "file"],

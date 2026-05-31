@@ -84,11 +84,11 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
   registerGitRoutes(app, projects, workspaces);
   registerTerminalProxyRoutes(app, projects, workspaces);
 
-  app.get<{ Querystring: { cwd?: string; q?: string; kind?: "tracked" | "untracked" | "other"; mode?: "file" | "path" } }>("/api/files", async (request, reply) => {
+  app.get<{ Querystring: { cwd?: string; q?: string; kind?: "tracked" | "untracked" | "other"; mode?: "file" | "path"; scope?: "tracked" | "all" } }>("/api/files", async (request, reply) => {
     if (request.query.cwd === undefined || request.query.cwd === "") return reply.code(400).send({ error: "cwd query parameter is required" });
     try {
       if (request.query.mode === "path") return await listPathSuggestions(request.query.cwd, request.query.q ?? "");
-      return await listFileSuggestions(request.query.cwd, request.query.q ?? "", request.query.kind);
+      return await listFileSuggestions(request.query.cwd, request.query.q ?? "", { kind: request.query.kind, scope: request.query.scope });
     } catch (error) {
       return reply.code(400).send({ error: error instanceof Error ? error.message : String(error) });
     }

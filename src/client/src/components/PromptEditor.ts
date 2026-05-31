@@ -110,7 +110,7 @@ export class PromptEditor extends LitElement {
           syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
           EditorView.lineWrapping,
           EditorView.contentAttributes.of((view) => inputAssistanceContentAttributes(view.state.sliceDoc(0, view.state.selection.main.head))),
-          placeholder("Message pi... Use / for commands, @ for files"),
+          placeholder("Message pi... Use / for commands, @ for tracked files, @ space for all files"),
           this.editableCompartment.of(EditorView.editable.of(!this.disabled)),
           this.readOnlyCompartment.of(EditorState.readOnly.of(this.disabled)),
           EditorView.updateListener.of((update) => {
@@ -182,12 +182,12 @@ export class PromptEditor extends LitElement {
           ...(command.description === undefined ? {} : { description: command.description }),
         }));
     } else if (trigger.kind === "file" && this.cwd !== undefined && this.cwd !== "") {
-      const files = await api.files(this.cwd, trigger.query, trigger.fileKind, trigger.fileMode).catch(emptyFileSuggestions);
+      const files = await api.files(this.cwd, trigger.query, { scope: trigger.fileScope }).catch(emptyFileSuggestions);
       if (version !== this.requestVersion) return;
       this.completions = files
         .slice(0, 12)
         .map((file) => {
-          const insertText = fileInsertText(file.path, trigger.fileMode === "path", trigger.quoted === true);
+          const insertText = fileInsertText(file.path, trigger.quoted === true, file.path.endsWith("/") ? trigger.allPrefix : undefined);
           return {
             kind: "file",
             replaceFrom: trigger.from,
@@ -200,7 +200,7 @@ export class PromptEditor extends LitElement {
     }
   }
 
-  private currentTrigger(): { kind: "command" | "file"; query: string; from: number; to: number; fileKind?: FileSuggestion["kind"]; fileMode?: "file" | "path"; quoted?: boolean } | undefined {
+  private currentTrigger(): { kind: "command" | "file"; query: string; from: number; to: number; fileScope?: "tracked" | "all" | undefined; allPrefix?: "@ " | "!@" | undefined; quoted?: boolean } | undefined {
     const cursor = this.editor?.state.selection.main.head ?? this.draft.length;
     const beforeCursor = this.draft.slice(0, cursor);
     const quotedTrigger = this.currentQuotedTrigger(beforeCursor, cursor);
@@ -209,18 +209,20 @@ export class PromptEditor extends LitElement {
     const tokenStart = Math.max(beforeCursor.lastIndexOf(" "), beforeCursor.lastIndexOf("\n")) + 1;
     const token = beforeCursor.slice(tokenStart);
     const beforeToken = beforeCursor.slice(0, tokenStart);
-    if (beforeToken.endsWith("@ ")) return { kind: "file", query: token, from: tokenStart, to: cursor, fileMode: "path" };
+    if (beforeToken.endsWith("@ ")) return { kind: "file", query: token, from: tokenStart - 2, to: cursor, fileScope: "all", allPrefix: "@ " };
     if (token.startsWith("/") && tokenStart === 0) return { kind: "command", query: token.slice(1), from: tokenStart, to: cursor };
-    if (token.startsWith("@")) return { kind: "file", query: token.slice(1), from: tokenStart, to: cursor };
+    if (token.startsWith("!@")) return { kind: "file", query: token.slice(2), from: tokenStart, to: cursor, fileScope: "all", allPrefix: "!@" };
+    if (token.startsWith("@")) return { kind: "file", query: token.slice(1), from: tokenStart, to: cursor, fileScope: "tracked" };
     return undefined;
   }
 
-  private currentQuotedTrigger(beforeCursor: string, cursor: number): { kind: "file"; query: string; from: number; to: number; fileMode?: "file" | "path"; quoted: true } | undefined {
+  private currentQuotedTrigger(beforeCursor: string, cursor: number): { kind: "file"; query: string; from: number; to: number; fileScope?: "tracked" | "all" | undefined; allPrefix?: "@ " | "!@" | undefined; quoted: true } | undefined {
     const quoteStart = beforeCursor.lastIndexOf("\"");
     if (quoteStart === -1) return undefined;
     const prefix = beforeCursor.slice(0, quoteStart);
-    if (prefix.endsWith("@")) return { kind: "file", query: beforeCursor.slice(quoteStart + 1), from: prefix.length - 1, to: cursor, quoted: true };
-    if (prefix.endsWith("@ ")) return { kind: "file", query: beforeCursor.slice(quoteStart + 1), from: quoteStart, to: cursor, fileMode: "path", quoted: true };
+    if (prefix.endsWith("!@")) return { kind: "file", query: beforeCursor.slice(quoteStart + 1), from: prefix.length - 2, to: cursor, fileScope: "all", allPrefix: "!@", quoted: true };
+    if (prefix.endsWith("@")) return { kind: "file", query: beforeCursor.slice(quoteStart + 1), from: prefix.length - 1, to: cursor, fileScope: "tracked", quoted: true };
+    if (prefix.endsWith("@ ")) return { kind: "file", query: beforeCursor.slice(quoteStart + 1), from: prefix.length - 2, to: cursor, fileScope: "all", allPrefix: "@ ", quoted: true };
     return undefined;
   }
 
@@ -286,8 +288,8 @@ export class PromptEditor extends LitElement {
   static override styles = promptEditorStyles;
 }
 
-function fileInsertText(path: string, pathMode: boolean, quoted: boolean): string {
-  const prefix = pathMode ? "" : "@";
+function fileInsertText(path: string, quoted: boolean, allPrefix?: "@ " | "!@"): string {
+  const prefix = allPrefix ?? "@";
   if (!quoted && !path.includes(" ")) return `${prefix}${path}`;
   return `${prefix}"${path}"`;
 }

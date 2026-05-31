@@ -931,14 +931,42 @@ function runChecks(checks: Check[]): boolean {
     const ok = result.status === 0;
     failed ||= !ok;
     console.log(`${ok ? "✓" : "✗"} ${label}`);
-    const output = (result.stdout || result.stderr).trim();
-    if (output !== "") {
-      const lines = output.split("\n");
-      for (const line of lines.slice(0, 3)) console.log(`  ${line}`);
-      if (lines.length > 3) console.log("  ...");
-    }
+    printCheckOutput(result.stdout || result.stderr);
   }
   return !failed;
+}
+
+function printCheckOutput(output: string): void {
+  const trimmed = output.trim();
+  if (trimmed === "") return;
+  const lines = trimmed.split("\n");
+  for (const line of lines.slice(0, 3)) console.log(`  ${line}`);
+  if (lines.length > 3) console.log("  ...");
+}
+
+function optionalDoctorChecks(): Check[] {
+  const shell = serviceShellLabel();
+  const backend = currentServiceBackend();
+  const checks: Check[] = [[`${shell} can find optional ripgrep (rg)`, serviceShellCommand(commandCheck("rg"))]];
+  if (backend?.kind === "systemd") checks.push([`systemd user ${shell} can find optional ripgrep (rg)`, systemdUserServiceShellCommand(commandCheck("rg"))]);
+  return checks;
+}
+
+function printOptionalDoctorChecks(): void {
+  let missingOptionalTool = false;
+  for (const [label, command] of optionalDoctorChecks()) {
+    const [bin, ...args] = command;
+    if (bin === undefined) continue;
+    const result = capture(bin, args);
+    const ok = result.status === 0;
+    missingOptionalTool ||= !ok;
+    console.log(`${ok ? "✓" : "!"} ${label}`);
+    printCheckOutput(result.stdout || result.stderr);
+  }
+  if (missingOptionalTool) {
+    console.log("  Install ripgrep, or make rg visible to the service shell, for faster all-file @ suggestions.");
+    console.log("  PI WEB falls back to a bounded filesystem scan when rg is unavailable.");
+  }
 }
 
 function printPathSetupAdvice(): void {
@@ -969,6 +997,7 @@ async function doctor(): Promise<void> {
   await printPiWebVersionReport();
   console.log("\nDoctor checks:");
   const ok = runChecks(doctorChecks());
+  printOptionalDoctorChecks();
   const nodePtySpawnHelperOk = printNodePtyDarwinSpawnHelperCheck();
 
   if (supportsSystemdUserServices()) {

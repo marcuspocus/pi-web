@@ -5,13 +5,32 @@ import { promisify } from "node:util";
 import type { ClientFileSuggestion } from "../types.js";
 
 const execFileAsync = promisify(execFile);
+const commandMaxBuffer = 1024 * 1024 * 8;
+const maxFilesystemFallbackPaths = 20_000;
 
-export async function listFileSuggestions(cwd: string, query = "", kind?: ClientFileSuggestion["kind"]): Promise<ClientFileSuggestion[]> {
-  const normalizedQuery = query.replace(/^@/, "").toLowerCase();
-  const files = await listGitFiles(cwd).catch(() => listPlainFiles(cwd));
+interface ExecFileOptions {
+  cwd: string;
+  maxBuffer: number;
+}
+
+export type FileSuggestionScope = "tracked" | "all";
+
+export interface FileSuggestionOptions {
+  kind?: ClientFileSuggestion["kind"] | undefined;
+  scope?: FileSuggestionScope | undefined;
+}
+
+export interface FileSuggestionDependencies {
+  execFile?: (file: string, args: string[], options: ExecFileOptions) => Promise<{ stdout: string }>;
+}
+
+export async function listFileSuggestions(cwd: string, query = "", options: FileSuggestionOptions = {}, deps: FileSuggestionDependencies = {}): Promise<ClientFileSuggestion[]> {
+  const normalizedQuery = normalizeFileQuery(query);
+  const exec = deps.execFile ?? execFileAsync;
+  const files = await listFilesForScope(cwd, options.scope, exec);
   return files
-    .filter((file) => !kind || file.kind === kind)
-    .filter((file) => !normalizedQuery || file.path.toLowerCase().includes(normalizedQuery))
+    .filter((file) => options.kind === undefined || file.kind === options.kind)
+    .filter((file) => normalizedQuery === "" || file.path.toLowerCase().includes(normalizedQuery))
     .sort((a, b) => Number(!a.path.endsWith("/")) - Number(!b.path.endsWith("/")) || a.path.localeCompare(b.path))
     .slice(0, 80);
 }
@@ -39,10 +58,20 @@ export async function listPathSuggestions(cwd: string, prefix = ""): Promise<Cli
     .slice(0, 80);
 }
 
-async function listGitFiles(cwd: string): Promise<ClientFileSuggestion[]> {
+async function listFilesForScope(cwd: string, scope: FileSuggestionScope | undefined, exec: NonNullable<FileSuggestionDependencies["execFile"]>): Promise<ClientFileSuggestion[]> {
+  if (scope === "all") return listPlainFiles(cwd, exec, true);
+  if (scope === "tracked") return listTrackedFiles(cwd, exec).catch(() => listPlainFiles(cwd, exec, true));
+  return listGitFiles(cwd, exec).catch(() => listPlainFiles(cwd, exec, false));
+}
+
+async function listTrackedFiles(cwd: string, exec: NonNullable<FileSuggestionDependencies["execFile"]>): Promise<ClientFileSuggestion[]> {
+  return withDirectories(lines(await git(cwd, ["ls-files"], exec)), "tracked");
+}
+
+async function listGitFiles(cwd: string, exec: NonNullable<FileSuggestionDependencies["execFile"]>): Promise<ClientFileSuggestion[]> {
   const [tracked, untracked] = await Promise.all([
-    git(cwd, ["ls-files"]),
-    git(cwd, ["ls-files", "--others", "--exclude-standard"]),
+    git(cwd, ["ls-files"], exec),
+    git(cwd, ["ls-files", "--others", "--exclude-standard"], exec),
   ]);
   return [
     ...withDirectories(lines(tracked), "tracked"),
@@ -50,14 +79,61 @@ async function listGitFiles(cwd: string): Promise<ClientFileSuggestion[]> {
   ];
 }
 
-async function listPlainFiles(cwd: string): Promise<ClientFileSuggestion[]> {
-  const { stdout } = await execFileAsync("rg", ["--files"], { cwd, maxBuffer: 1024 * 1024 * 8 });
-  return withDirectories(lines(stdout), "other");
+async function listPlainFiles(cwd: string, exec: NonNullable<FileSuggestionDependencies["execFile"]>, includeIgnored: boolean): Promise<ClientFileSuggestion[]> {
+  try {
+    const args = includeIgnored ? ["--files", "--hidden", "--no-ignore"] : ["--files"];
+    const { stdout } = await exec("rg", args, { cwd, maxBuffer: commandMaxBuffer });
+    return withDirectories(lines(stdout), "other");
+  } catch {
+    return withDirectories(await filesystemFiles(cwd), "other");
+  }
 }
 
-async function git(cwd: string, args: string[]): Promise<string> {
-  const { stdout } = await execFileAsync("git", args, { cwd, maxBuffer: 1024 * 1024 * 8 });
+async function filesystemFiles(cwd: string): Promise<string[]> {
+  const paths: string[] = [];
+  await collectFilesystemFiles(cwd, "", paths, false);
+  return paths;
+}
+
+async function collectFilesystemFiles(cwd: string, relativeDirectory: string, paths: string[], optionalDirectory: boolean): Promise<void> {
+  if (paths.length >= maxFilesystemFallbackPaths) return;
+  const absoluteDirectory = relativeDirectory === "" ? cwd : join(cwd, relativeDirectory);
+  let entries;
+  try {
+    entries = await readdir(absoluteDirectory, { withFileTypes: true });
+  } catch (error) {
+    if (optionalDirectory) return;
+    throw error;
+  }
+
+  entries.sort((a, b) => Number(!a.isDirectory()) - Number(!b.isDirectory()) || a.name.localeCompare(b.name));
+  for (const entry of entries) {
+    if (paths.length >= maxFilesystemFallbackPaths) return;
+    const relativePath = relativeDirectory === "" ? entry.name : `${relativeDirectory}/${entry.name}`;
+    if (entry.isDirectory()) {
+      await collectFilesystemFiles(cwd, relativePath, paths, true);
+      continue;
+    }
+    if (entry.isFile() || await isSymlinkedFile(cwd, relativePath, entry.isSymbolicLink())) paths.push(relativePath);
+  }
+}
+
+async function isSymlinkedFile(cwd: string, relativePath: string, symbolicLink: boolean): Promise<boolean> {
+  if (!symbolicLink) return false;
+  try {
+    return (await stat(join(cwd, relativePath))).isFile();
+  } catch {
+    return false;
+  }
+}
+
+async function git(cwd: string, args: string[], exec: NonNullable<FileSuggestionDependencies["execFile"]>): Promise<string> {
+  const { stdout } = await exec("git", args, { cwd, maxBuffer: commandMaxBuffer });
   return stdout;
+}
+
+function normalizeFileQuery(query: string): string {
+  return query.replace(/^!@/, "").replace(/^@\s?/, "").toLowerCase();
 }
 
 function lines(text: string): string[] {
