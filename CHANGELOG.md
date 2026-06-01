@@ -1,5 +1,17 @@
 # @jmfederico/pi-web
 
+## 1.202606.0
+
+### Patch Changes
+
+- 6c094af: Keep slash command autocomplete visible above the chat status indicator.
+- bad3a18: Add an action-palette command for deleting browser-cached new sessions, while keeping archive and delete session actions context-specific.
+- fdd2cf2: Keep chat file mention suggestions working on installations that do not have ripgrep available, add an all-file `@` mention mode, stop hiding directories in the file explorer, and report optional ripgrep availability in `pi-web doctor`.
+- a038da6: Fix mobile browser layout so the app no longer leaves an extra bottom gap above browser controls while preserving standalone PWA safe-area spacing.
+- 9c80eb0: Avoid suggesting unavailable `pi-web` restart commands for local checkout installs, and show native service commands only when PI WEB can detect matching service files.
+- 5090661: Add `pi-web version` and include installed and running PI WEB version details in doctor output.
+- 9c80eb0: Rename the PI WEB status workspace tab to Updates so version and restart guidance is easier to find.
+
 ## 1.202605.14
 
 ### Patch Changes
