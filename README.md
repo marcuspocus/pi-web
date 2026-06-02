@@ -161,8 +161,11 @@ pi-web status
 pi-web logs
 pi-web restart
 pi-web doctor
+pi-web version
 pi-web uninstall
 ```
+
+Use `pi-web version` to compare the installed package version with the versions reported by the running Web/UI and session daemon services.
 
 One-line install is also available for users who prefer it:
 
@@ -184,6 +187,7 @@ Then in Pi:
 /pi-web logs
 /pi-web restart
 /pi-web doctor
+/pi-web version
 ```
 
 The Pi command is a convenience wrapper around the same service installer. When installed this way, the service installer can use PI WEB's package-local server entrypoints, so `pi-web-server` and `pi-web-sessiond` do not need to be on your shell `PATH`. `/pi-web logs` shows the last 100 service log lines; use `pi-web logs` in a shell when you want to follow logs continuously.

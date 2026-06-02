@@ -1,5 +1,6 @@
 import { isSessionActive } from "../../../../shared/activity";
 import type { AppState } from "../../appState";
+import { isCachedNewSessionInfo } from "../../cachedNewSessions";
 import { isWorkspaceDeletionPending } from "../../workspaceDeletion";
 import type { PluginAction } from "../types";
 
@@ -168,8 +169,16 @@ export function createCoreActions(): PluginAction[] {
       title: "Archive Session",
       description: "Archive the selected session",
       group: "Session",
-      enabled: (context) => context.state.selectedSession !== undefined && context.state.selectedSession.archived !== true,
+      enabled: hasArchivableSession,
       run: (context) => context.archiveSession(),
+    },
+    {
+      id: "session.delete",
+      title: "Delete New Session",
+      description: "Delete the selected browser-cached new session",
+      group: "Session",
+      enabled: hasCachedNewSession,
+      run: (context) => context.deleteCachedNewSession(),
     },
     {
       id: "session.stop",
@@ -193,4 +202,13 @@ function hasGitWorkspace(context: { state: AppState }): boolean {
 function hasDeletableWorkspace(context: { state: AppState }): boolean {
   const workspace = context.state.selectedWorkspace;
   return workspace !== undefined && workspace.isGitWorktree && !workspace.isMain && !isWorkspaceDeletionPending(context.state, workspace);
+}
+
+function hasArchivableSession(context: { state: AppState }): boolean {
+  const session = context.state.selectedSession;
+  return session !== undefined && session.archived !== true && !isCachedNewSessionInfo(session);
+}
+
+function hasCachedNewSession(context: { state: AppState }): boolean {
+  return isCachedNewSessionInfo(context.state.selectedSession);
 }

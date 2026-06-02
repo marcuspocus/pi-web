@@ -1,11 +1,13 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { readFile, realpath, stat } from "node:fs/promises";
+import { homedir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DefaultPackageManager, getAgentDir, SettingsManager } from "@earendil-works/pi-coding-agent";
-import type { PiWebComponentStatus, PiWebInstallationInfo, PiWebReleaseStatus, PiWebServiceComponent, PiWebStatusMessage, PiWebStatusResponse } from "../shared/apiTypes.js";
-import { SessionDaemonClient } from "./sessiond/sessionDaemonClient.js";
+import type { PiWebComponentStatus, PiWebInstallationInfo, PiWebReleaseStatus, PiWebServiceComponent, PiWebStatusMessage, PiWebStatusResponse, PiWebVersionResponse } from "../shared/apiTypes.js";
+import { parsePiWebComponentStatus } from "../shared/piWebStatusParsing.js";
+import { SessionDaemonClient } from "../sessiond/sessionDaemonClient.js";
 
 const PI_WEB_PACKAGE_NAME = "@jmfederico/pi-web";
 const PI_WEB_NPM_SOURCE = `npm:${PI_WEB_PACKAGE_NAME}`;
@@ -13,11 +15,45 @@ const DEFAULT_VERSION = "0.0.0-dev";
 const LATEST_RELEASE_CACHE_MS = 6 * 60 * 60 * 1000;
 const VERSION_CHECK_TIMEOUT_MS = 5000;
 
-const restartCommands = {
-  restart: "pi-web restart",
-  restartSystemd: "pi-web restart",
-  restartDev: "pi-web restart",
+type ServiceId = "sessiond" | "web" | "uiDev";
+type NativeServiceBackendKind = "systemd" | "launchd";
+
+interface NativeServiceRef {
+  id: ServiceId;
+  systemdName: string;
+  launchdLabel: string;
+  launchdPlistName: string;
+}
+
+interface NativeServiceCommands {
+  restart?: string;
+  restartWeb?: string;
+  restartSessiond?: string;
+  status?: string;
+}
+
+const serviceRefs: Record<ServiceId, NativeServiceRef> = {
+  sessiond: {
+    id: "sessiond",
+    systemdName: "pi-web-sessiond.service",
+    launchdLabel: "com.pi-web.sessiond",
+    launchdPlistName: "com.pi-web.sessiond.plist",
+  },
+  web: {
+    id: "web",
+    systemdName: "pi-web.service",
+    launchdLabel: "com.pi-web.web",
+    launchdPlistName: "com.pi-web.web.plist",
+  },
+  uiDev: {
+    id: "uiDev",
+    systemdName: "pi-web-ui-dev.service",
+    launchdLabel: "com.pi-web.ui-dev",
+    launchdPlistName: "com.pi-web.ui-dev.plist",
+  },
 };
+
+const startServiceOrder: ServiceId[] = ["sessiond", "web", "uiDev"];
 
 interface PackageInfo {
   name: string;
@@ -47,20 +83,27 @@ export async function getPiWebComponentStatus(component: PiWebServiceComponent):
   };
 }
 
-export async function getPiWebStatus(daemon = new SessionDaemonClient()): Promise<PiWebStatusResponse> {
-  const web = await getPiWebComponentStatus("web");
-  const [installed, sessiond] = await Promise.all([
-    readInstalledPackageInfo(),
+export async function getPiWebVersionStatus(daemon = new SessionDaemonClient()): Promise<PiWebVersionResponse> {
+  const [web, sessiond] = await Promise.all([
+    getPiWebComponentStatus("web"),
     getSessiondComponentStatus(daemon),
   ]);
-  const release = await getLatestReleaseStatus(installed?.version ?? web.runtimeVersion ?? DEFAULT_VERSION);
-  const components = { web, sessiond };
-  const commands = commandsFor(web.installation ?? sessiond.installation);
-  const messages = buildMessages(components, release, commands);
   return {
     packageName: PI_WEB_PACKAGE_NAME,
     generatedAt: new Date().toISOString(),
-    components,
+    components: { web, sessiond },
+  };
+}
+
+export async function getPiWebStatus(daemon = new SessionDaemonClient()): Promise<PiWebStatusResponse> {
+  const versionStatus = await getPiWebVersionStatus(daemon);
+  const { web, sessiond } = versionStatus.components;
+  const release = await getLatestReleaseStatus(web.installedVersion ?? web.runtimeVersion ?? DEFAULT_VERSION);
+  const components = { web, sessiond };
+  const commands = commandsFor(components);
+  const messages = buildMessages(components, release, commands);
+  return {
+    ...versionStatus,
     release,
     commands,
     messages,
@@ -179,52 +222,11 @@ async function getSessiondComponentStatus(daemon: SessionDaemonClient): Promise<
     }
     const parsed: unknown = upstream.body === "" ? undefined : JSON.parse(upstream.body);
     const version = isRecord(parsed) ? parsed["version"] : undefined;
-    const component = parseComponentStatus(version);
+    const component = parsePiWebComponentStatus(version);
     return component ?? unavailableSessiond("health response did not include version information");
   } catch (error) {
     return unavailableSessiond(error instanceof Error ? error.message : String(error));
   }
-}
-
-function parseComponentStatus(value: unknown): PiWebComponentStatus | undefined {
-  if (!isRecord(value)) return undefined;
-  const component = value["component"];
-  const label = value["label"];
-  const runtimeVersion = value["runtimeVersion"];
-  const installedVersion = value["installedVersion"];
-  const stale = value["stale"];
-  const available = value["available"];
-  const error = value["error"];
-  const installation = parseInstallationInfo(value["installation"]);
-  if (component !== "web" && component !== "sessiond") return undefined;
-  if (typeof label !== "string" || typeof stale !== "boolean" || typeof available !== "boolean") return undefined;
-  return {
-    component,
-    label,
-    ...(typeof runtimeVersion === "string" ? { runtimeVersion } : {}),
-    ...(typeof installedVersion === "string" ? { installedVersion } : {}),
-    stale,
-    available,
-    ...(installation === undefined ? {} : { installation }),
-    ...(typeof error === "string" ? { error } : {}),
-  };
-}
-
-function parseInstallationInfo(value: unknown): PiWebInstallationInfo | undefined {
-  if (!isRecord(value)) return undefined;
-  const kind = value["kind"];
-  const path = value["path"];
-  const source = value["source"];
-  const scope = value["scope"];
-  const npmRoot = value["npmRoot"];
-  if (kind !== "pi-package" && kind !== "npm-global" && kind !== "local" && kind !== "unknown") return undefined;
-  return {
-    kind,
-    ...(typeof path === "string" ? { path } : {}),
-    ...(typeof source === "string" ? { source } : {}),
-    ...(scope === "user" || scope === "project" ? { scope } : {}),
-    ...(typeof npmRoot === "string" ? { npmRoot } : {}),
-  };
 }
 
 function unavailableSessiond(error: string): PiWebComponentStatus {
@@ -280,21 +282,122 @@ async function fetchLatestNpmVersion(currentVersion: string): Promise<string> {
   return version;
 }
 
-function commandsFor(installation: PiWebInstallationInfo | undefined): PiWebStatusResponse["commands"] {
+function commandsFor(components: PiWebStatusResponse["components"]): PiWebStatusResponse["commands"] {
+  const installation = preferredInstallation(components);
+  const serviceCommands = nativeServiceCommands();
+  const cliCommands = piWebCliCommands(installation);
+  const restart = restartCommandFor(installation, serviceCommands, cliCommands);
+  const restartWeb = serviceCommands.restartWeb ?? cliCommands.restart;
+  const restartSessiond = serviceCommands.restartSessiond ?? cliCommands.restart;
+  const status = serviceCommands.status ?? cliCommands.status;
+  const update = updateCommandFor(installation, restart);
+
   return {
-    update: updateCommandFor(installation),
-    ...restartCommands,
+    ...(update === undefined ? {} : { update }),
+    ...(restart === undefined ? {} : { restart }),
+    ...(restartWeb === undefined ? {} : { restartWeb }),
+    ...(restartSessiond === undefined ? {} : { restartSessiond }),
+    ...(status === undefined ? {} : { status }),
   };
 }
 
-function updateCommandFor(installation: PiWebInstallationInfo | undefined): string {
+function preferredInstallation(components: PiWebStatusResponse["components"]): PiWebInstallationInfo | undefined {
+  const web = components.web.installation;
+  const sessiond = components.sessiond.installation;
+  if (web?.kind === "local" || sessiond?.kind === "local") return web?.kind === "local" ? web : sessiond;
+  return web ?? sessiond;
+}
+
+function piWebCliCommands(installation: PiWebInstallationInfo | undefined): NativeServiceCommands {
+  if (installation?.kind !== "npm-global" || !hasCommand("pi-web")) return {};
+  return { restart: "pi-web restart", status: "pi-web status" };
+}
+
+function restartCommandFor(installation: PiWebInstallationInfo | undefined, serviceCommands: NativeServiceCommands, cliCommands: NativeServiceCommands): string | undefined {
+  if (installation?.kind === "local" || installation?.kind === "pi-package") return serviceCommands.restart ?? cliCommands.restart;
+  return cliCommands.restart ?? serviceCommands.restart;
+}
+
+function updateCommandFor(installation: PiWebInstallationInfo | undefined, restartCommand: string | undefined): string | undefined {
+  if (restartCommand === undefined) return undefined;
   if (installation?.kind === "pi-package") {
-    return `pi update ${installation.source ?? PI_WEB_NPM_SOURCE} && ${restartCommands.restart}`;
+    if (!hasCommand("pi")) return undefined;
+    return `pi update ${installation.source ?? PI_WEB_NPM_SOURCE} && ${restartCommand}`;
   }
   if (installation?.kind === "local" && installation.path !== undefined) {
-    return `cd ${shellQuote(installation.path)} && git pull && npm install && npm run build && ${restartCommands.restart}`;
+    if (!hasCommand("npm") || !isGitCheckoutWithUpstream(installation.path)) return undefined;
+    return `cd ${shellQuote(installation.path)} && git pull --ff-only && npm install && npm run build && ${restartCommand}`;
   }
-  return `npm install -g ${PI_WEB_PACKAGE_NAME} && ${restartCommands.restart}`;
+  if (installation?.kind !== "npm-global" || !hasCommand("npm")) return undefined;
+  return `npm install -g ${PI_WEB_PACKAGE_NAME} && ${restartCommand}`;
+}
+
+function nativeServiceCommands(): NativeServiceCommands {
+  const backend = nativeServiceBackend();
+  if (backend === undefined) return {};
+  const installed = installedServiceIds(backend);
+  if (installed.size === 0) return {};
+  const web = installedServiceRefs(installed, ["web", "uiDev"]);
+  const sessiond = installedServiceRefs(installed, ["sessiond"]);
+  const restartable = web.length === 0 ? [] : installedServiceRefs(installed);
+  const status = installedServiceRefs(installed);
+  return {
+    ...(restartable.length === 0 ? {} : { restart: restartNativeServicesCommand(backend, restartable) }),
+    ...(web.length === 0 ? {} : { restartWeb: restartNativeServicesCommand(backend, web) }),
+    ...(sessiond.length === 0 ? {} : { restartSessiond: restartNativeServicesCommand(backend, sessiond) }),
+    ...(status.length === 0 ? {} : { status: statusNativeServicesCommand(backend, status) }),
+  };
+}
+
+function nativeServiceBackend(): NativeServiceBackendKind | undefined {
+  if (process.platform === "linux" && hasCommand("systemctl")) return "systemd";
+  if (process.platform === "darwin" && hasCommand("launchctl")) return "launchd";
+  return undefined;
+}
+
+function installedServiceIds(backend: NativeServiceBackendKind): Set<ServiceId> {
+  return new Set(startServiceOrder.filter((id) => existsSync(serviceFilePath(backend, serviceRefs[id]))));
+}
+
+function installedServiceRefs(installed: Set<ServiceId>, candidates: ServiceId[] = startServiceOrder): NativeServiceRef[] {
+  return startServiceOrder.filter((id) => candidates.includes(id) && installed.has(id)).map((id) => serviceRefs[id]);
+}
+
+function serviceFilePath(backend: NativeServiceBackendKind, ref: NativeServiceRef): string {
+  return backend === "systemd" ? join(systemdServiceDir(), ref.systemdName) : join(launchdServiceDir(), ref.launchdPlistName);
+}
+
+function systemdServiceDir(): string {
+  return join(homedir(), ".config", "systemd", "user");
+}
+
+function launchdServiceDir(): string {
+  return join(homedir(), "Library", "LaunchAgents");
+}
+
+function restartNativeServicesCommand(backend: NativeServiceBackendKind, refs: NativeServiceRef[]): string {
+  if (backend === "systemd") return `systemctl --user restart ${refs.map((ref) => ref.systemdName).join(" ")}`;
+  return refs.map((ref) => `launchctl kickstart -k gui/$(id -u)/${ref.launchdLabel}`).join(" && ");
+}
+
+function statusNativeServicesCommand(backend: NativeServiceBackendKind, refs: NativeServiceRef[]): string {
+  if (backend === "systemd") return `systemctl --user status ${refs.map((ref) => ref.systemdName).join(" ")}`;
+  return refs.map((ref) => `launchctl print gui/$(id -u)/${ref.launchdLabel}`).join(" && ");
+}
+
+function isGitCheckoutWithUpstream(path: string): boolean {
+  return hasCommand("git")
+    && commandSucceeds("git", ["-C", path, "rev-parse", "--is-inside-work-tree"])
+    && commandSucceeds("git", ["-C", path, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]);
+}
+
+function hasCommand(command: string): boolean {
+  return commandSucceeds("/usr/bin/env", ["sh", "-c", `command -v ${command}`]);
+}
+
+function commandSucceeds(command: string, args: string[]): boolean {
+  const result = spawnSync(command, args, { encoding: "utf8" });
+  return result.status === 0;
 }
 
 function shellQuote(value: string): string {
@@ -310,18 +413,23 @@ function buildMessages(components: PiWebStatusResponse["components"], release: P
       id: "update-available",
       severity: "info",
       title: "PI WEB update available",
-      body: `PI WEB ${release.latestVersion} is available${installedVersion === undefined ? "" : `; installed version is ${installedVersion}`}. Update PI WEB, then restart PI WEB services.`,
-      command: commands.update,
+      body: commands.update === undefined
+        ? `PI WEB ${release.latestVersion} is available${installedVersion === undefined ? "" : `; installed version is ${installedVersion}`}. Update PI WEB, then restart the services or processes for this installation.`
+        : `PI WEB ${release.latestVersion} is available${installedVersion === undefined ? "" : `; installed version is ${installedVersion}`}. Run the update command to update PI WEB and restart its services.`,
+      ...optionalMessageCommand(commands.update),
     });
   }
 
   if (components.web.stale) {
+    const command = commands.restartWeb ?? commands.restart;
     messages.push({
       id: "web-stale",
       severity: "warning",
       title: "Web/UI service restart needed",
-      body: `The Web/UI service is running ${formatVersion(components.web.runtimeVersion)}, but ${formatVersion(components.web.installedVersion)} is installed. Restart the service to use the installed version.`,
-      command: commands.restart,
+      body: command === undefined
+        ? `The Web/UI service is running ${formatVersion(components.web.runtimeVersion)}, but ${formatVersion(components.web.installedVersion)} is installed. Restart the Web/UI service or process to use the installed version.`
+        : `The Web/UI service is running ${formatVersion(components.web.runtimeVersion)}, but ${formatVersion(components.web.installedVersion)} is installed. Restart the service to use the installed version.`,
+      ...optionalMessageCommand(command),
     });
   }
 
@@ -330,20 +438,29 @@ function buildMessages(components: PiWebStatusResponse["components"], release: P
       id: "sessiond-unavailable",
       severity: "warning",
       title: "Session daemon version unavailable",
-      body: `PI WEB could not check the session daemon version${components.sessiond.error === undefined ? "." : `: ${components.sessiond.error}`}`,
-      command: "pi-web status",
+      body: commands.status === undefined
+        ? `PI WEB could not check the session daemon version${components.sessiond.error === undefined ? "." : `: ${components.sessiond.error}`}. Check the session daemon service or process that runs this installation.`
+        : `PI WEB could not check the session daemon version${components.sessiond.error === undefined ? "." : `: ${components.sessiond.error}`}`,
+      ...optionalMessageCommand(commands.status),
     });
   } else if (components.sessiond.stale) {
+    const command = commands.restartSessiond ?? commands.restart;
     messages.push({
       id: "sessiond-stale",
       severity: "warning",
       title: "Session daemon restart needed",
-      body: `The session daemon is running ${formatVersion(components.sessiond.runtimeVersion)}, but ${formatVersion(components.sessiond.installedVersion)} is installed. Restart the daemon to use the installed version.`,
-      command: commands.restart,
+      body: command === undefined
+        ? `The session daemon is running ${formatVersion(components.sessiond.runtimeVersion)}, but ${formatVersion(components.sessiond.installedVersion)} is installed. Restart the session daemon service or process to use the installed version.`
+        : `The session daemon is running ${formatVersion(components.sessiond.runtimeVersion)}, but ${formatVersion(components.sessiond.installedVersion)} is installed. Restart the daemon to use the installed version.`,
+      ...optionalMessageCommand(command),
     });
   }
 
   return messages;
+}
+
+function optionalMessageCommand(command: string | undefined): Pick<PiWebStatusMessage, "command"> | object {
+  return command === undefined ? {} : { command };
 }
 
 function skipVersionCheck(): boolean {

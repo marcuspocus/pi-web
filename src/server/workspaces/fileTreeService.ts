@@ -11,11 +11,11 @@ export async function listWorkspaceTree(rootPath: string, path: string | undefin
   if (!stat.isDirectory()) throw new Error("Path is not a directory");
 
   const dirents = await readdir(target, { withFileTypes: true });
-  const visible = dirents.filter((entry) => entry.name !== ".git" && entry.name !== "node_modules").sort((a, b) => {
+  const sorted = dirents.sort((a, b) => {
     if (a.isDirectory() !== b.isDirectory()) return a.isDirectory() ? -1 : 1;
     return a.name.localeCompare(b.name);
   });
-  const selected = visible.slice(0, MAX_ENTRIES);
+  const selected = sorted.slice(0, MAX_ENTRIES);
   const entries = await Promise.all(selected.map(async (entry): Promise<FileTreeEntry> => {
     const absolute = join(target, entry.name);
     const childRelative = relativePath === "" ? entry.name : `${relativePath}/${entry.name}`;
@@ -24,5 +24,5 @@ export async function listWorkspaceTree(rootPath: string, path: string | undefin
     return { name: entry.name, path: childRelative, type, size: childStat.size, modifiedAt: childStat.mtime.toISOString() };
   }));
 
-  return { path: relativePath, entries, scannedAt: new Date().toISOString(), truncated: visible.length > selected.length };
+  return { path: relativePath, entries, scannedAt: new Date().toISOString(), truncated: sorted.length > selected.length };
 }

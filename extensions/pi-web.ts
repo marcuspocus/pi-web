@@ -18,6 +18,7 @@ const subcommands = [
   "start",
   "stop",
   "doctor",
+  "version",
   "uninstall",
   "open",
   "help",
@@ -88,7 +89,7 @@ async function boundedLogs(): Promise<{ code: number; output: string }> {
 
 export default function piWebExtension(pi: ExtensionAPI): void {
   pi.registerCommand("pi-web", {
-    description: "Manage PI WEB services: install, status, logs, restart, start, stop, doctor, open",
+    description: "Manage PI WEB services: install, status, logs, restart, start, stop, doctor, version, open",
     getArgumentCompletions(prefix: string): { value: string; label: string }[] | null {
       const [first = ""] = parseArgs(prefix);
       const items = subcommands

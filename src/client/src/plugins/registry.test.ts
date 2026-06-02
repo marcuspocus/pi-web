@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Workspace } from "../api";
+import type { SessionInfo, Workspace } from "../api";
 import { initialAppState, type AppState } from "../appState";
+import { markCachedNewSessionInfo } from "../cachedNewSessions";
 import { corePlugin } from "./core";
 import { PluginRegistry } from "./registry";
 import { themePackPlugin } from "./themes";
@@ -38,6 +39,7 @@ function createContext(statePatch: Partial<AppState> = {}) {
     deleteWorkspace: vi.fn(() => { calls.push("deleteWorkspace"); }),
     startSession: vi.fn(() => { calls.push("startSession"); }),
     archiveSession: vi.fn(() => { calls.push("archiveSession"); }),
+    deleteCachedNewSession: vi.fn(() => { calls.push("deleteCachedNewSession"); }),
     stopActiveWork: vi.fn(() => { calls.push("stopActiveWork"); }),
   };
   return { context, calls };
@@ -100,6 +102,34 @@ describe("PluginRegistry", () => {
     if (action !== undefined) void action.run();
 
     expect(calls).toEqual(["deleteWorkspace"]);
+  });
+
+  it("offers archive only for persisted sessions and delete only for browser-cached new sessions", () => {
+    const registry = new PluginRegistry();
+    registry.register({ id: "core", plugin: corePlugin });
+
+    const persistedActions = registry.getActions(createContext({ selectedSession: testSession() }).context);
+    expect(persistedActions.find((action) => action.id === "core:session.archive")?.enabled).toBe(true);
+    expect(persistedActions.find((action) => action.id === "core:session.delete")?.enabled).toBe(false);
+
+    const cachedActions = registry.getActions(createContext({ selectedSession: markCachedNewSessionInfo(testSession()) }).context);
+    expect(cachedActions.find((action) => action.id === "core:session.archive")?.enabled).toBe(false);
+    expect(cachedActions.find((action) => action.id === "core:session.delete")?.enabled).toBe(true);
+
+    const archivedActions = registry.getActions(createContext({ selectedSession: { ...testSession(), archived: true, archivedAt: "2026-05-20T00:00:00.000Z" } }).context);
+    expect(archivedActions.find((action) => action.id === "core:session.archive")?.enabled).toBe(false);
+    expect(archivedActions.find((action) => action.id === "core:session.delete")?.enabled).toBe(false);
+  });
+
+  it("routes browser-cached new session delete through the runtime context", () => {
+    const registry = new PluginRegistry();
+    registry.register({ id: "core", plugin: corePlugin });
+    const { context, calls } = createContext({ selectedSession: markCachedNewSessionInfo(testSession()) });
+    const action = registry.getActions(context).find((candidate) => candidate.id === "core:session.delete");
+
+    if (action !== undefined) void action.run();
+
+    expect(calls).toEqual(["deleteCachedNewSession"]);
   });
 
   it("routes refresh current to the active core workspace panel", () => {
@@ -235,6 +265,19 @@ describe("PluginRegistry", () => {
 
 function testWorkspace(patch: Partial<Workspace> = {}): Workspace {
   return { id: "w1", projectId: "p1", path: "/tmp/project", label: "main", isMain: true, isGitRepo: true, isGitWorktree: false, ...patch };
+}
+
+function testSession(patch: Partial<SessionInfo> = {}): SessionInfo {
+  return {
+    id: "s1",
+    path: "/tmp/s1.jsonl",
+    cwd: "/tmp/project",
+    created: "2026-05-20T00:00:00.000Z",
+    modified: "2026-05-20T00:00:00.000Z",
+    messageCount: 1,
+    firstMessage: "Hello",
+    ...patch,
+  };
 }
 
 function testThemeTokens(): ThemeTokens {

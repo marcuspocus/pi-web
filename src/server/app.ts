@@ -9,13 +9,13 @@ import { ProjectService } from "./projects/projectService.js";
 import { WorkspaceService } from "./workspaces/workspaceService.js";
 import { listFileSuggestions, listPathSuggestions } from "./workspaces/fileSuggestions.js";
 import { listDirectorySuggestions } from "./projects/directorySuggestions.js";
-import { SessionDaemonClient } from "./sessiond/sessionDaemonClient.js";
+import { SessionDaemonClient } from "../sessiond/sessionDaemonClient.js";
 import { registerSessionProxyRoutes, type SessionProxyDaemon } from "./sessiond/sessionProxyRoutes.js";
 import { registerWorkspaceExplorerRoutes } from "./workspaceExplorerRoutes.js";
 import { registerGitRoutes } from "./gitRoutes.js";
 import { registerTerminalProxyRoutes } from "./terminalProxyRoutes.js";
 import { PiWebPluginService } from "./piWebPluginService.js";
-import { getPiWebStatus } from "./piWebStatus.js";
+import { getPiWebStatus, getPiWebVersionStatus } from "./piWebStatus.js";
 import { MachineService } from "./machines/machineService.js";
 import { registerMachineRoutes } from "./machines/machineRoutes.js";
 import { registerMachineProxyRoutes } from "./machines/machineProxyRoutes.js";
@@ -69,11 +69,11 @@ function registerLocalProjectRoutes(app: FastifyInstance, projects: ProjectServi
 }
 
 function registerLocalFileSuggestionRoutes(app: FastifyInstance, prefix: string): void {
-  app.get<{ Querystring: { cwd?: string; q?: string; kind?: "tracked" | "untracked" | "other"; mode?: "file" | "path" } }>(`${prefix}/files`, async (request, reply) => {
+  app.get<{ Querystring: { cwd?: string; q?: string; kind?: "tracked" | "untracked" | "other"; mode?: "file" | "path"; scope?: "tracked" | "all" } }>(`${prefix}/files`, async (request, reply) => {
     if (request.query.cwd === undefined || request.query.cwd === "") return reply.code(400).send({ error: "cwd query parameter is required" });
     try {
       if (request.query.mode === "path") return await listPathSuggestions(request.query.cwd, request.query.q ?? "");
-      return await listFileSuggestions(request.query.cwd, request.query.q ?? "", request.query.kind);
+      return await listFileSuggestions(request.query.cwd, request.query.q ?? "", { kind: request.query.kind, scope: request.query.scope });
     } catch (error) {
       return reply.code(400).send({ error: error instanceof Error ? error.message : String(error) });
     }
@@ -99,6 +99,7 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
   });
 
   app.get("/api/pi-web/status", async () => getPiWebStatus());
+  app.get("/api/pi-web/version", async () => getPiWebVersionStatus());
 
   registerMachineRoutes(app, machines);
 

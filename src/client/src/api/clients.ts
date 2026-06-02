@@ -145,8 +145,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+export interface FileSuggestionQueryOptions {
+  kind?: FileSuggestion["kind"] | undefined;
+  mode?: "file" | "path" | undefined;
+  scope?: "tracked" | "all" | undefined;
+  machineId?: string | undefined;
+}
+
 export const filesApi = {
-  files: (cwd: string, query: string, kind?: FileSuggestion["kind"], mode?: "file" | "path", machineId = "local") => request(`${machinePrefix(machineId)}/files?cwd=${encodeURIComponent(cwd)}&q=${encodeURIComponent(query)}${kind !== undefined ? `&kind=${encodeURIComponent(kind)}` : ""}${mode !== undefined ? `&mode=${encodeURIComponent(mode)}` : ""}`, arrayOf(parseFileSuggestion)),
+  files: (cwd: string, query: string, options: FileSuggestionQueryOptions = {}) => {
+    const params = new URLSearchParams({ cwd, q: query });
+    if (options.kind !== undefined) params.set("kind", options.kind);
+    if (options.mode !== undefined) params.set("mode", options.mode);
+    if (options.scope !== undefined) params.set("scope", options.scope);
+    return request(`${machinePrefix(options.machineId)}/files?${params.toString()}`, arrayOf(parseFileSuggestion));
+  },
 };
 
 export const gitApi = {

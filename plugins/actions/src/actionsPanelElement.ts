@@ -15,6 +15,12 @@ type ConfigState =
   | { kind: "loading" }
   | WorkspaceActionsConfigLoadResult;
 
+interface ActionStatus {
+  kind: "info" | "success" | "error";
+  message: string;
+  detail?: string;
+}
+
 const configCache = new Map<string, ConfigState>();
 
 export function defineActionsPanelElement(): void {
@@ -33,7 +39,7 @@ class PiWebActionsPanel extends HTMLElement {
   private openTerminalValue: OpenTerminal | undefined;
   private terminalCommandRunsValue: InternalTerminalCommandRunsRuntime | undefined;
   private runningActionId: string | undefined;
-  private status: { kind: "info" | "success" | "error"; message: string; detail?: string } | undefined;
+  private status: ActionStatus | undefined;
   private readonly root: ShadowRoot;
   private readonly onConfigChanged = () => {
     this.render();
@@ -45,7 +51,14 @@ class PiWebActionsPanel extends HTMLElement {
   }
 
   set workspace(value: Workspace | undefined) {
+    const previousKey = this.workspaceValue === undefined ? undefined : cacheKeyForWorkspace(this.workspaceValue);
+    const nextKey = value === undefined ? undefined : cacheKeyForWorkspace(value);
     this.workspaceValue = value;
+    // Parent app updates should not rebuild this shadow DOM for the same workspace:
+    // doing so resets the mobile scroll position and can replace buttons mid-click.
+    if (previousKey === nextKey) return;
+    this.runningActionId = undefined;
+    this.status = undefined;
     this.render();
   }
 
@@ -83,6 +96,7 @@ class PiWebActionsPanel extends HTMLElement {
           <button class="secondary" data-open-terminal>Open Terminal</button>
         </span>
       </section>
+      ${this.renderStatus()}
       <section class="viewer actions-viewer">
         ${this.renderConfigState(state)}
       </section>
@@ -94,8 +108,7 @@ class PiWebActionsPanel extends HTMLElement {
 
     for (const button of this.root.querySelectorAll("button[data-action-id]")) {
       button.addEventListener("click", () => {
-        const action = actionFromConfigState(state, button.getAttribute("data-action-id"));
-        if (action !== undefined) void this.dispatchAction(workspace, action);
+        void this.dispatchActionById(workspace, button.getAttribute("data-action-id"));
       });
     }
 
@@ -104,22 +117,36 @@ class PiWebActionsPanel extends HTMLElement {
     });
   }
 
+  private dispatchActionById(workspace: Workspace, actionId: string | null): Promise<void> {
+    if (!this.isCurrentWorkspace(workspace)) return Promise.resolve();
+    const action = actionFromConfigState(getCachedWorkspaceConfig(workspace), actionId);
+    if (action === undefined) {
+      this.status = { kind: "error", message: "That action is no longer available. Click Refresh, then try again." };
+      this.render();
+      return Promise.resolve();
+    }
+    return this.dispatchAction(workspace, action);
+  }
+
+  private isCurrentWorkspace(workspace: Workspace): boolean {
+    return this.workspaceValue !== undefined && cacheKeyForWorkspace(this.workspaceValue) === cacheKeyForWorkspace(workspace);
+  }
+
   private renderConfigState(state: ConfigState): string {
-    if (state.kind === "loading") return `<p class="muted">Loading ${escapeHtml(ACTIONS_CONFIG_PATH)}…</p>${this.renderStatus()}`;
-    if (state.kind === "missing") return `${renderMissingState(state)}${this.renderStatus()}`;
-    if (state.kind === "unavailable") return `${renderUnavailableState(state)}${this.renderStatus()}`;
-    if (state.config.actions.length === 0) return `<p class="muted">No actions are defined in ${escapeHtml(ACTIONS_CONFIG_PATH)}. Add actions to the file, then click Refresh.</p>${this.renderStatus()}`;
+    if (state.kind === "loading") return `<p class="muted">Loading ${escapeHtml(ACTIONS_CONFIG_PATH)}…</p>`;
+    if (state.kind === "missing") return renderMissingState(state);
+    if (state.kind === "unavailable") return renderUnavailableState(state);
+    if (state.config.actions.length === 0) return `<p class="muted">No actions are defined in ${escapeHtml(ACTIONS_CONFIG_PATH)}. Add actions to the file, then click Refresh.</p>`;
     return `
       <p class="muted">Actions run in a dedicated workspace terminal, then switch to that terminal. Edit ${escapeHtml(ACTIONS_CONFIG_PATH)} and click Refresh to reload.</p>
       ${renderActionGroups(state.config.actions, this.runningActionId)}
-      ${this.renderStatus()}
     `;
   }
 
   private renderStatus(): string {
     if (this.status === undefined) return "";
     const detail = this.status.detail === undefined ? "" : `<pre>${escapeHtml(this.status.detail)}</pre>`;
-    return `<div class="status ${escapeAttr(this.status.kind)}">${escapeHtml(this.status.message)}${detail}</div>`;
+    return `<div class="status panel-status ${escapeAttr(this.status.kind)}">${escapeHtml(this.status.message)}${detail}</div>`;
   }
 
   private async refreshConfig(workspace: Workspace): Promise<void> {
@@ -128,6 +155,7 @@ class PiWebActionsPanel extends HTMLElement {
     this.render();
 
     const state = await refreshWorkspaceConfig(workspace);
+    if (!this.isCurrentWorkspace(workspace)) return;
     this.status = state.kind === "loaded"
       ? { kind: "success", message: `Loaded ${String(state.config.actions.length)} action${state.config.actions.length === 1 ? "" : "s"}.` }
       : undefined;
@@ -135,8 +163,16 @@ class PiWebActionsPanel extends HTMLElement {
   }
 
   private async dispatchAction(workspace: Workspace, action: WorkspaceAction): Promise<void> {
-    if (this.runningActionId !== undefined) return;
-    if (action.confirm && !window.confirm(`Run ${action.title}?\n\n${action.command}`)) return;
+    if (this.runningActionId !== undefined) {
+      this.status = { kind: "info", message: "Another action is already starting. Wait for it to finish dispatching, then try again." };
+      this.render();
+      return;
+    }
+    if (action.confirm && !window.confirm(`Run ${action.title}?\n\n${action.command}`)) {
+      this.status = { kind: "info", message: `Cancelled ${action.title}.` };
+      this.render();
+      return;
+    }
 
     const terminal = this.terminalCommandRunsValue;
     if (terminal === undefined) {
@@ -151,6 +187,7 @@ class PiWebActionsPanel extends HTMLElement {
 
     try {
       const handle = await runWorkspaceActionInTerminal(terminal, workspace, action);
+      if (!this.isCurrentWorkspace(workspace)) return;
       this.status = {
         kind: "success",
         message: `Started terminal command “${handle.run.title}”.`,
@@ -159,6 +196,7 @@ class PiWebActionsPanel extends HTMLElement {
       this.runningActionId = undefined;
       this.render();
     } catch (error) {
+      if (!this.isCurrentWorkspace(workspace)) return;
       this.runningActionId = undefined;
       this.status = { kind: "error", message: error instanceof Error ? error.message : String(error) };
       this.render();
@@ -260,8 +298,8 @@ function renderAction(action: WorkspaceAction, runningActionId: string | undefin
   `;
 }
 
-function actionFromConfigState(state: ConfigState, actionId: string | null): WorkspaceAction | undefined {
-  if (state.kind !== "loaded" || actionId === null) return undefined;
+function actionFromConfigState(state: ConfigState | undefined, actionId: string | null): WorkspaceAction | undefined {
+  if (state?.kind !== "loaded" || actionId === null) return undefined;
   return state.config.actions.find((action) => action.id === actionId);
 }
 
@@ -287,6 +325,7 @@ function actionStyles(): string {
       button:disabled { cursor: wait; opacity: 0.65; }
       .empty-state { border: 1px dashed var(--pi-border-muted); border-radius: 8px; color: var(--pi-muted); padding: 12px; }
       .empty-state p { margin: 6px 0 0; }
+      .panel-status { margin: 12px 12px 0; }
       .status { border: 1px solid var(--pi-border); border-radius: 8px; padding: 10px; }
       .status.info { border-color: var(--pi-accent-border); background: var(--pi-bg-overlay-soft); }
       .status.success { border-color: var(--pi-success-border); background: var(--pi-success-surface); color: var(--pi-success); }

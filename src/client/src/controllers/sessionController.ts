@@ -62,7 +62,7 @@ export class SessionController {
     this.socket.close();
     this.catchupStreamSessionId = undefined;
     this.clearPendingTranscriptEvents();
-    this.setState({ selectedSession: undefined, messages: [], messagePageStart: 0, messagePageTotal: 0, isLoadingEarlierMessages: false, isReceivingPartialStream: false, status: undefined, activity: undefined });
+    this.setState({ selectedSession: undefined, messages: [], messagePageStart: 0, messagePageEnd: 0, messagePageTotal: 0, isLoadingEarlierMessages: false, isReceivingPartialStream: false, status: undefined, activity: undefined });
   }
 
   deselectSession(options?: { forgetRememberedSelection?: boolean | undefined; updateUrl?: boolean | undefined }) {

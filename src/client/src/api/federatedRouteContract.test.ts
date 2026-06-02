@@ -34,7 +34,7 @@ describe("federated route contract", () => {
       ignoreParseFailure(workspacesApi.workspaces("p 1", machineId)),
       ignoreParseFailure(workspacesApi.workspaceTree("p 1", "w 1", "src", machineId)),
       ignoreParseFailure(workspacesApi.workspaceFile("p 1", "w 1", "README.md", machineId)),
-      ignoreParseFailure(filesApi.files("/repo", "README", "tracked", "file", machineId)),
+      ignoreParseFailure(filesApi.files("/repo", "README", { kind: "tracked", mode: "file", machineId })),
       ignoreParseFailure(gitApi.gitStatus("p 1", "w 1", machineId)),
       ignoreParseFailure(gitApi.gitDiff("p 1", "w 1", { path: "README.md", staged: true }, machineId)),
       ignoreParseFailure(sessionsApi.sessions("/repo", machineId)),

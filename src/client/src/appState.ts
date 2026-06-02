@@ -12,6 +12,7 @@ export interface AppState {
   sessions: SessionInfo[];
   messages: ChatLine[];
   messagePageStart: number;
+  messagePageEnd: number;
   messagePageTotal: number;
   isLoadingEarlierMessages: boolean;
   isReceivingPartialStream: boolean;
@@ -104,6 +105,7 @@ export function initialAppState(): AppState {
     sessions: [],
     messages: [],
     messagePageStart: 0,
+    messagePageEnd: 0,
     messagePageTotal: 0,
     isLoadingEarlierMessages: false,
     isReceivingPartialStream: false,

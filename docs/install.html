@@ -138,7 +138,8 @@
 /pi-web install
 /pi-web status
 /pi-web logs
-/pi-web doctor</code></pre>
+/pi-web doctor
+/pi-web version</code></pre>
               </div>
             </section>
 
@@ -195,6 +196,7 @@
 
             <section id="manage-services">
               <h2>Manage services</h2>
+              <p><code>pi-web version</code> compares the installed package version with the versions reported by the running Web/UI and session daemon services.</p>
               <div class="code-card">
                 <div class="copy-row">
                   <strong>Useful commands</strong>
@@ -204,6 +206,7 @@
 <span class="prompt">$</span> pi-web logs
 <span class="prompt">$</span> pi-web restart
 <span class="prompt">$</span> pi-web doctor
+<span class="prompt">$</span> pi-web version
 
 <span class="comment"># From a checkout, install the split development services:</span>
 <span class="prompt">$</span> pi-web install --dev</code></pre>

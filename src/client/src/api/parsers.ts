@@ -469,7 +469,13 @@ function parsePiWebReleaseStatus(value: unknown): PiWebReleaseStatus {
 
 function parsePiWebCommands(value: unknown): PiWebStatusResponse["commands"] {
   const record = requireRecord(value);
-  return { update: requireString(record, "update"), restart: requireString(record, "restart"), restartSystemd: requireString(record, "restartSystemd"), restartDev: requireString(record, "restartDev") };
+  return {
+    ...optionalField("update", optionalString(record, "update")),
+    ...optionalField("restart", optionalString(record, "restart")),
+    ...optionalField("restartWeb", optionalString(record, "restartWeb")),
+    ...optionalField("restartSessiond", optionalString(record, "restartSessiond")),
+    ...optionalField("status", optionalString(record, "status")),
+  };
 }
 
 function parsePiWebStatusMessage(value: unknown): PiWebStatusMessage {

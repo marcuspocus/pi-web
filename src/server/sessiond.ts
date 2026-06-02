@@ -10,7 +10,7 @@ import { AuthService } from "./sessions/authService.js";
 import { registerAuthRoutes } from "./sessions/authRoutes.js";
 import { PiSessionService } from "./sessions/piSessionService.js";
 import { registerSessionRoutes } from "./sessions/sessionRoutes.js";
-import { sessiondSocketPath } from "./sessiond/config.js";
+import { sessiondSocketPath } from "../sessiond/config.js";
 import { TerminalService } from "./terminals/terminalService.js";
 import { registerTerminalRoutes } from "./terminals/terminalRoutes.js";
 import { getPiWebComponentStatus } from "./piWebStatus.js";

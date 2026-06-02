@@ -44,27 +44,31 @@ export class ProjectList extends LitElement {
     return html`
       <section>
         <h2>${this.renderHeading()}</h2>
-        ${this.collapsed ? null : this.projects.map((project) => html`
-          <div
-            class=${`action-row ${this.selected?.id === project.id ? "selected" : ""}`}
-            tabindex="0"
-            title=${project.path}
-            @click=${(event: MouseEvent) => { activateSelectableRow(event, () => this.onSelect?.(project)); }}
-            @keydown=${(event: KeyboardEvent) => { activateSelectableRowFromKeyboard(event, () => this.onSelect?.(project)); }}
-          >
-            <div class="action-main">
-              <span class="action-name">${project.name}</span><small>${this.renderActivity(project)}${project.path}</small>
-            </div>
-            <div class="action-menu">
-              <button class="action-menu-toggle" title="Project actions" aria-label=${`Actions for ${project.name}`} @click=${(event: MouseEvent) => { event.stopPropagation(); this.toggleMenu(project.id, event.currentTarget); }}>⋯</button>
-              ${this.openMenuProjectId === project.id ? html`
-                <div class="action-menu-panel" style=${this.menuStyle}>
-                  <button title="Close project" @click=${() => { this.close(project); }}>Close</button>
+        ${this.collapsed ? null : html`
+          <div class="list-body">
+            ${this.projects.map((project) => html`
+              <div
+                class=${`action-row ${this.selected?.id === project.id ? "selected" : ""}`}
+                tabindex="0"
+                title=${project.path}
+                @click=${(event: MouseEvent) => { activateSelectableRow(event, () => this.onSelect?.(project)); }}
+                @keydown=${(event: KeyboardEvent) => { activateSelectableRowFromKeyboard(event, () => this.onSelect?.(project)); }}
+              >
+                <div class="action-main">
+                  <span class="action-name">${project.name}</span><small>${this.renderActivity(project)}${project.path}</small>
                 </div>
-              ` : null}
-            </div>
+                <div class="action-menu">
+                  <button class="action-menu-toggle" title="Project actions" aria-label=${`Actions for ${project.name}`} @click=${(event: MouseEvent) => { event.stopPropagation(); this.toggleMenu(project.id, event.currentTarget); }}>⋯</button>
+                  ${this.openMenuProjectId === project.id ? html`
+                    <div class="action-menu-panel" style=${this.menuStyle}>
+                      <button title="Close project" @click=${() => { this.close(project); }}>Close</button>
+                    </div>
+                  ` : null}
+                </div>
+              </div>
+            `)}
           </div>
-        `)}
+        `}
       </section>
     `;
   }

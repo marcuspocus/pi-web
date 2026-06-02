@@ -69,12 +69,30 @@ function renderCommand(html: HtmlTemplateTag, label: string, command: string): T
   `;
 }
 
+function renderCommands(html: HtmlTemplateTag, status: PiWebStatusResponse): TemplateResult | undefined {
+  const commands = [
+    ["Update", status.commands.update],
+    ["Restart all", status.commands.restart],
+    ["Restart Web/UI", status.commands.restartWeb],
+    ["Restart session daemon", status.commands.restartSessiond],
+    ["Status", status.commands.status],
+  ].filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1] !== "");
+
+  if (commands.length === 0) return undefined;
+  return html`
+    <section>
+      <strong>Suggested commands</strong>
+      ${commands.map(([label, command]) => renderCommand(html, label, command))}
+    </section>
+  `;
+}
+
 function renderStatusPanel(html: HtmlTemplateTag, state: AppState): TemplateResult {
   const status = statusFor(state);
   if (status === undefined) {
     return html`
-      <section class="toolbar"><strong>PI WEB</strong></section>
-      <section class="viewer"><p class="muted">Checking PI WEB status…</p></section>
+      <section class="toolbar"><strong>Updates</strong></section>
+      <section class="viewer"><p class="muted">Checking PI WEB update status…</p></section>
     `;
   }
 
@@ -98,7 +116,7 @@ function renderStatusPanel(html: HtmlTemplateTag, state: AppState): TemplateResu
         .pi-web-command > span { grid-column: 1 / -1; }
       }
     </style>
-    <section class="toolbar"><strong>PI WEB</strong><span class="stale">beta</span>${messages.length > 0 ? html`<span class="stale">${String(messages.length)}</span>` : null}</section>
+    <section class="toolbar"><strong>Updates</strong><span class="stale">beta</span>${messages.length > 0 ? html`<span class="stale">${String(messages.length)}</span>` : null}</section>
     <section class="viewer pi-web-status">
       <section>
         ${messages.length === 0 ? html`<p class="muted">No PI WEB update or restart messages.</p>` : messages.map((message) => html`
@@ -116,13 +134,7 @@ function renderStatusPanel(html: HtmlTemplateTag, state: AppState): TemplateResu
         ${renderComponent(html, status.components.sessiond)}
       </section>
 
-      <section>
-        <strong>Commands</strong>
-        ${renderCommand(html, "Update", status.commands.update)}
-        ${renderCommand(html, "Restart", status.commands.restart)}
-        ${renderCommand(html, "systemd", status.commands.restartSystemd)}
-        ${renderCommand(html, "dev", status.commands.restartDev)}
-      </section>
+      ${renderCommands(html, status)}
 
       <section class="pi-web-meta">
         <span>Generated ${status.generatedAt}</span>
@@ -136,13 +148,13 @@ function renderStatusPanel(html: HtmlTemplateTag, state: AppState): TemplateResu
 
 const plugin: PiWebPlugin = {
   apiVersion: 1,
-  name: "PI WEB Status",
+  name: "PI WEB Updates",
   activate: ({ html }) => ({
     contributions: {
       workspacePanels: [
         {
           id: "workspace.status",
-          title: "PI WEB",
+          title: "Updates",
           order: 100,
           visible: (context) => shouldShowStatusPanel(context.state),
           badge: (context) => {

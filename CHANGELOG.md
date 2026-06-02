@@ -1,5 +1,32 @@
 # @jmfederico/pi-web
 
+## 1.202606.0
+
+### Patch Changes
+
+- 6c094af: Keep slash command autocomplete visible above the chat status indicator.
+- bad3a18: Add an action-palette command for deleting browser-cached new sessions, while keeping archive and delete session actions context-specific.
+- fdd2cf2: Keep chat file mention suggestions working on installations that do not have ripgrep available, add an all-file `@` mention mode, stop hiding directories in the file explorer, and report optional ripgrep availability in `pi-web doctor`.
+- a038da6: Fix mobile browser layout so the app no longer leaves an extra bottom gap above browser controls while preserving standalone PWA safe-area spacing.
+- 9c80eb0: Avoid suggesting unavailable `pi-web` restart commands for local checkout installs, and show native service commands only when PI WEB can detect matching service files.
+- 5090661: Add `pi-web version` and include installed and running PI WEB version details in doctor output.
+- 9c80eb0: Rename the PI WEB status workspace tab to Updates so version and restart guidance is easier to find.
+
+## 1.202605.14
+
+### Patch Changes
+
+- 3bd4773: Correct the chat history range label when normalized display messages are fewer than the raw session transcript entries.
+- 1c1740a: Keep left navigation section titles visible while project, workspace, and session lists scroll.
+- 5737b22: Add a collapse control for the left navigation panel in wide and two-panel layouts.
+- 50f1ddc: Refresh session list message counts from live session status updates.
+- c73ac5b: Keep PWA navigation bars visible after returning to the app from the background.
+- 2abd1d9: Queue prompts submitted during session compaction in pi-web and deliver them only after compaction finishes.
+- 958596a: Make `pi-web status` print a concise service health report without invoking paged system service output.
+- f569467: Add an optional terminal soft-key bar for common control, navigation, and Meta-style key sequences, with mobile-friendly defaults and a persistent toggle.
+- 61a763a: Keep the chat status indicator bubble above sticky message titles.
+- 559c6f6: Add a desktop edge control for collapsing and expanding the workspace tools panel.
+
 ## 1.202605.13
 
 ### Patch Changes
