@@ -105,7 +105,8 @@ export class AppContextBar extends LitElement {
   };
 
   static override styles = css`
-    :host { flex: 0 0 auto; min-width: 0; }
+    /* Keep the refresh menu in this shadow tree above the following mobile tab strip. */
+    :host { position: relative; z-index: 20; flex: 0 0 auto; min-width: 0; }
     .context-bar { position: relative; flex: 0 0 auto; min-width: 0; display: flex; align-items: center; gap: 0; padding: 6px 0; border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); }
     .context-bar::before, .context-bar::after { content: ""; position: absolute; top: 0; bottom: 0; z-index: 2; width: 20px; opacity: 0; pointer-events: none; transition: opacity .15s ease; }
     .context-bar::before { left: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--pi-shadow-strong) 55%, transparent) 0%, transparent 100%); }
