@@ -46,7 +46,7 @@ import "./WorkspacePanel";
 import type { WorkspacePanelEmptyState } from "./WorkspacePanel";
 import "./appShell/AppContextBar";
 import "./appShell/AppMobileMainTabs";
-import type { AppMobileMainTab } from "./appShell/AppMobileMainTabs";
+import type { AppMobileMainTab, AppMobileMainTabIcon } from "./appShell/AppMobileMainTabs";
 import "./appShell/AppNavigationPanel";
 import "./appShell/AppPanelEdgeControl";
 import "./appShell/AppRefreshControl";
@@ -650,12 +650,19 @@ export class PiWebApp extends LitElement {
     return "Select a project and workspace to start a session.";
   }
 
-  private renderMobilePanelTitle(panel: QualifiedWorkspacePanelContribution) {
+  private mobilePanelBadge(panel: QualifiedWorkspacePanelContribution): unknown {
     const workspace = this.state.selectedWorkspace;
-    if (workspace === undefined) return panel.title;
-    const badge = panel.badge?.(this.createWorkspacePanelContext(workspace));
-    if (badge === undefined || badge === "") return panel.title;
-    return html`${panel.title} <span class="tab-badge">${badge}</span>`;
+    if (workspace === undefined) return undefined;
+    return panel.badge?.(this.createWorkspacePanelContext(workspace));
+  }
+
+  private mobilePanelIcon(panel: QualifiedWorkspacePanelContribution): AppMobileMainTabIcon | undefined {
+    switch (panel.id) {
+      case "core:workspace.files": return "files";
+      case "core:workspace.git": return "git";
+      case "core:workspace.terminal": return "terminal";
+      default: return undefined;
+    }
   }
 
   private createWorkspacePanelContext(workspace: Workspace): WorkspacePanelContext {
@@ -1011,9 +1018,17 @@ export class PiWebApp extends LitElement {
 
   private mobileMainTabs(): AppMobileMainTab[] {
     return [
-      { id: "navigation", label: "Sessions", className: "navigation-tab" },
-      { id: "chat", label: "Chat" },
-      ...this.visibleWorkspacePanels().map((panel): AppMobileMainTab => ({ id: panel.id, label: this.renderMobilePanelTitle(panel) })),
+      { id: "navigation", label: "Sessions", icon: "navigation", className: "navigation-tab" },
+      { id: "chat", label: "Chat", icon: "chat" },
+      ...this.visibleWorkspacePanels().map((panel): AppMobileMainTab => {
+        const icon = this.mobilePanelIcon(panel);
+        return {
+          id: panel.id,
+          label: panel.title,
+          ...(icon === undefined ? {} : { icon }),
+          badge: this.mobilePanelBadge(panel),
+        };
+      }),
     ];
   }
 
