@@ -112,7 +112,7 @@ export default {
 
 When copying the Info plugin, choose a new plugin id so it does not conflict with the bundled `info` plugin.
 
-PI WEB also ships a `pi-web` status plugin that demonstrates dynamic `visible` and `badge` callbacks for tabs that only appear when the host has status messages or needs extra install visibility.
+PI WEB also ships an `updates` plugin that demonstrates dynamic `visible` and `badge` callbacks for tabs that only appear when the host has status messages or needs extra install visibility.
 
 ## Local plugin usage
 
@@ -156,6 +156,21 @@ After changing plugin enablement, reload the PI WEB browser tab. Already-loaded 
 PI WEB ships core, discoverable plugins in the main `@jmfederico/pi-web` npm package. No separate `pi install` step is required: update PI WEB, reload the browser tab, and the bundled plugins appear in `/pi-web-plugins/manifest.json`.
 
 Built-in plugins can be managed from **Settings → Plugins** or with the top-level `plugins` config key.
+
+### Updates
+
+**Plugin id:** `updates`  
+**What it does:** adds a conditional **Updates** workspace tab with PI WEB update, restart, and installed-service guidance.
+
+Updates is enabled by default. To hide it, disable `updates` in **Settings → Plugins** or set:
+
+```json
+{
+  "plugins": {
+    "updates": { "enabled": false }
+  }
+}
+```
 
 ### Workspace Tasks
 

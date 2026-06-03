@@ -162,7 +162,7 @@ After editing, check the manifest endpoint and browser-console failure cases.</c
                 If you copy it, choose a new plugin id so it does not conflict with the bundled <code>info</code> plugin.
               </p>
               <p>
-                The bundled <code>pi-web</code> status plugin demonstrates dynamic <code>visible</code> and <code>badge</code>
+                The bundled <code>updates</code> plugin demonstrates dynamic <code>visible</code> and <code>badge</code>
                 callbacks for tabs that only appear when the host has status messages or needs extra install visibility.
               </p>
             </section>
@@ -178,6 +178,26 @@ After editing, check the manifest endpoint and browser-console failure cases.</c
                 Built-in plugins can be managed from <strong>Settings → Plugins</strong> or with the top-level
                 <code>plugins</code> config key.
               </p>
+
+              <h3>Updates</h3>
+              <p>
+                <strong>Updates</strong> adds a conditional <strong>Updates</strong> workspace tab with PI WEB update,
+                restart, and installed-service guidance. It is built into PI WEB and enabled by default.
+              </p>
+              <ul>
+                <li>Plugin id: <code>updates</code></li>
+              </ul>
+              <div class="code-card">
+                <div class="copy-row">
+                  <strong>Disable Updates</strong>
+                  <button class="copy-button" data-copy="#updates-disable">Copy</button>
+                </div>
+                <pre id="updates-disable"><code>{
+  "plugins": {
+    "updates": { "enabled": false }
+  }
+}</code></pre>
+              </div>
 
               <h3>Workspace Tasks</h3>
               <p>
