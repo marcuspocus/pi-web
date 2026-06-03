@@ -149,12 +149,20 @@ function renderStatusPanel(html: HtmlTemplateTag, state: AppState): TemplateResu
 const plugin: PiWebPlugin = {
   apiVersion: 1,
   name: "PI WEB Updates",
-  activate: ({ html }) => ({
+  activate: ({ html, svg }) => ({
     contributions: {
       workspacePanels: [
         {
           id: "workspace.status",
           title: "Updates",
+          icon: svg`
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 6v5h-5"></path>
+              <path d="M4 18v-5h5"></path>
+              <path d="M18.4 9A7 7 0 0 0 6.1 6.7L4 8.8"></path>
+              <path d="M5.6 15A7 7 0 0 0 17.9 17.3L20 15.2"></path>
+            </svg>
+          `,
           order: 100,
           visible: (context) => shouldShowStatusPanel(context.state),
           badge: (context) => {
