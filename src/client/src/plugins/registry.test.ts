@@ -11,7 +11,7 @@ function createContext(statePatch: Partial<AppState> = {}) {
   const calls: string[] = [];
   const context: PluginRuntimeContext = {
     state: { ...initialAppState(), ...statePatch },
-    piWebInternal: {
+    piWebUnstable: {
       terminalCommandRuns: {
         runCommand: vi.fn(),
         listCommandRuns: vi.fn(),

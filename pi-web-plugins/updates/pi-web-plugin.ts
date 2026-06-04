@@ -1,17 +1,15 @@
 import type { TemplateResult } from "lit";
-import type { AppState } from "../../src/client/src/appState";
-import type { HtmlTemplateTag, PiWebPlugin } from "../../src/client/src/plugins/types";
-import type { PiWebComponentStatus, PiWebInstallationInfo, PiWebStatusMessage, PiWebStatusResponse } from "../../src/shared/apiTypes";
+import type { HtmlTemplateTag, PiWebComponentStatus, PiWebInstallationInfo, PiWebPlugin, PiWebStatusMessage, PiWebStatusResponse, PluginRuntimeState } from "@jmfederico/pi-web/plugin-api";
 
-function messagesFor(state: AppState): PiWebStatusMessage[] {
-  return state.piWebStatus?.messages ?? [];
+function messagesFor(state: PluginRuntimeState | undefined): PiWebStatusMessage[] {
+  return state?.piWebStatus?.messages ?? [];
 }
 
-function statusFor(state: AppState): PiWebStatusResponse | undefined {
-  return state.piWebStatus;
+function statusFor(state: PluginRuntimeState | undefined): PiWebStatusResponse | undefined {
+  return state?.piWebStatus;
 }
 
-function messageCount(state: AppState): number {
+function messageCount(state: PluginRuntimeState | undefined): number {
   return messagesFor(state).length;
 }
 
@@ -19,7 +17,7 @@ function isLocalOrUnknownInstallation(installation: PiWebInstallationInfo | unde
   return installation === undefined || installation.kind === "local" || installation.kind === "unknown";
 }
 
-function shouldShowUpdatesPanel(state: AppState): boolean {
+function shouldShowUpdatesPanel(state: PluginRuntimeState | undefined): boolean {
   const status = statusFor(state);
   if (messageCount(state) > 0) return true;
   if (status === undefined) return false;
@@ -87,7 +85,7 @@ function renderCommands(html: HtmlTemplateTag, status: PiWebStatusResponse): Tem
   `;
 }
 
-function renderUpdatesPanel(html: HtmlTemplateTag, state: AppState): TemplateResult {
+function renderUpdatesPanel(html: HtmlTemplateTag, state: PluginRuntimeState | undefined): TemplateResult {
   const status = statusFor(state);
   if (status === undefined) {
     return html`

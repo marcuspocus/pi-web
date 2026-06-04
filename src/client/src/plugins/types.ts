@@ -1,6 +1,6 @@
 import type { TemplateResult } from "lit";
 import type { AppAction } from "../actions";
-import type { FileContentResponse, FileTreeEntry, GitDiffResponse, GitStatusResponse, RunTerminalCommandInput, TerminalCommandRun, TerminalCommandRunFilter, TerminalCommandRunHandle, Workspace } from "../api";
+import type { FileContentResponse, FileTreeEntry, GitDiffResponse, GitStatusResponse, Machine, RunTerminalCommandInput, TerminalCommandRun, TerminalCommandRunFilter, TerminalCommandRunHandle, Workspace } from "../api";
 import type { AppState } from "../appState";
 import type { SettingsSection } from "../settingsRoute";
 import type { LocalContributionId, PluginId, QualifiedContributionId } from "./ids";
@@ -39,7 +39,24 @@ export interface PluginContributions {
   themePairs?: ThemePairContribution[];
 }
 
-export interface PiWebInternalRuntimeContext {
+export interface PluginMachine {
+  id: string;
+  name: string;
+  kind: Machine["kind"];
+}
+
+export interface WorkspacePanelFiles {
+  readFile(path: string): Promise<FileContentResponse>;
+}
+
+export type WorkspaceTerminalCommandInput = Omit<RunTerminalCommandInput, "workspace">;
+
+export interface WorkspacePanelTerminal {
+  open(options?: { terminalId?: string | undefined }): void;
+  runCommand(input: WorkspaceTerminalCommandInput): Promise<TerminalCommandRunHandle>;
+}
+
+export interface PiWebUnstableRuntimeContext {
   terminalCommandRuns: TerminalCommandRunsInternalRuntime;
   openSettings?: (section?: SettingsSection) => void;
 }
@@ -53,7 +70,7 @@ export interface TerminalCommandRunsInternalRuntime {
 
 export interface PluginRuntimeContext {
   state: AppState;
-  piWebInternal?: PiWebInternalRuntimeContext;
+  piWebUnstable?: PiWebUnstableRuntimeContext;
   openActionPalette: () => void;
   focusPrompt: () => void;
   addProject: () => void | Promise<void>;
@@ -93,15 +110,14 @@ export interface QualifiedPluginAction extends AppAction {
   localId: LocalContributionId;
 }
 
-export interface WorkspacePanelVisibilityContext {
-  workspace: Workspace;
-  state: AppState;
-}
-
 export interface WorkspacePanelContext {
+  machine: PluginMachine;
   workspace: Workspace;
   state: AppState;
-  piWebInternal?: PiWebInternalRuntimeContext;
+  files: WorkspacePanelFiles;
+  terminal: WorkspacePanelTerminal;
+  requestRender: () => void;
+  piWebUnstable?: Pick<PiWebUnstableRuntimeContext, "terminalCommandRuns">;
   fileTree: FileTreeEntry[];
   expandedDirs: Record<string, FileTreeEntry[]>;
   selectedFilePath: string | undefined;
@@ -131,7 +147,7 @@ export interface WorkspacePanelContribution {
   title: string;
   icon?: WorkspacePanelIcon;
   order?: number;
-  visible?: (context: WorkspacePanelVisibilityContext) => boolean;
+  visible?: (context: WorkspacePanelContext) => boolean;
   badge?: (context: WorkspacePanelContext) => string | number | TemplateResult | undefined;
   render: (context: WorkspacePanelContext) => TemplateResult;
 }
@@ -143,6 +159,7 @@ export interface QualifiedWorkspacePanelContribution extends WorkspacePanelContr
 }
 
 export interface WorkspaceLabelContext {
+  machine: PluginMachine;
   workspace: Workspace;
   state: AppState;
 }

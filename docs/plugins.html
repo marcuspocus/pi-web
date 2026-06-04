@@ -84,10 +84,11 @@
                 <li><strong>Workspace tools and panels</strong> next to Files, Git, and Terminal.</li>
                 <li><strong>Workspace labels</strong> in the workspace list, header, and status bar.</li>
                 <li><strong>Static assets</strong> served from the plugin folder.</li>
-                <li><strong>Browser-side integrations</strong> using PI WEB HTTP/WebSocket APIs.</li>
+                <li><strong>Browser-side integrations</strong> using documented PI WEB plugin context helpers.</li>
               </ul>
               <p>
                 Plugins cannot extend the session daemon or add server-side hooks. They run in the browser UI only.
+                PI WEB's internal API routes are not plugin API; use documented context helpers instead.
               </p>
               <div class="callout">
                 The plugin API is intentionally limited and actively developed. Feedback is appreciated: if an extension

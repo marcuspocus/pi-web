@@ -1,7 +1,6 @@
 import type { PiWebPlugin } from "@jmfederico/pi-web/plugin-api";
 import { TASKS_CONFIG_PATH } from "./config.js";
 import { defineTasksPanelElement, tasksPanelBadge } from "./tasksPanelElement.js";
-import { terminalCommandRunsFromContext } from "./piWebInternal.js";
 
 const plugin: PiWebPlugin = {
   apiVersion: 1,
@@ -39,8 +38,8 @@ const plugin: PiWebPlugin = {
               </svg>
             `,
             order: 40,
-            badge: ({ workspace }) => tasksPanelBadge(workspace),
-            render: (context) => html`<pi-web-workspace-tasks-panel .workspace=${context.workspace} .terminalCommandRuns=${terminalCommandRunsFromContext(context)} .openTerminal=${context.openTerminal}></pi-web-workspace-tasks-panel>`,
+            badge: (context) => tasksPanelBadge(context),
+            render: (context) => html`<pi-web-workspace-tasks-panel .context=${context}></pi-web-workspace-tasks-panel>`,
           },
         ],
       },

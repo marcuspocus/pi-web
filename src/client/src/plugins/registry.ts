@@ -1,7 +1,7 @@
 import { html, svg } from "lit";
 import type { AppState } from "../appState";
 import type { Workspace } from "../api";
-import type { PiWebPluginRegistration, PluginAction, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution } from "./types";
+import type { PiWebPluginRegistration, PluginAction, PluginMachine, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution } from "./types";
 
 const idPattern = /^[a-z][a-z0-9.-]*$/u;
 const localIdPattern = /^[a-z][a-z0-9.-]*$/u;
@@ -72,7 +72,7 @@ export class PluginRegistry {
   }
 
   getWorkspaceLabelItems(state: AppState, workspace: Workspace): WorkspaceLabelItem[] {
-    const context = { state, workspace };
+    const context = { machine: pluginMachineFromState(state), state, workspace };
     return [...this.workspaceLabels]
       .sort((left, right) => (left.order ?? 1000) - (right.order ?? 1000) || left.id.localeCompare(right.id))
       .flatMap((contribution) => {
@@ -89,11 +89,13 @@ export class PluginRegistry {
   private qualifyWorkspacePanel(pluginId: string, panel: WorkspacePanelContribution): QualifiedWorkspacePanelContribution {
     const id = this.qualify(pluginId, panel.id);
     const badge = panel.badge;
+    const visible = panel.visible;
     return {
       ...panel,
       id,
       pluginId,
       localId: panel.id,
+      ...(visible === undefined ? {} : { visible: (context: WorkspacePanelContext) => visible(workspacePanelContextFor(context, pluginId)) }),
       ...(badge === undefined ? {} : { badge: (context: WorkspacePanelContext) => badge(workspacePanelContextFor(context, pluginId)) }),
       render: (context: WorkspacePanelContext) => panel.render(workspacePanelContextFor(context, pluginId)),
     };
@@ -159,4 +161,10 @@ export function installPluginRuntimeScope(context: PluginRuntimeContext, scope: 
 export function installWorkspacePanelScope(context: WorkspacePanelContext, scope: (pluginId: string) => WorkspacePanelContext): WorkspacePanelContext {
   workspacePanelScopes.set(context, scope);
   return context;
+}
+
+function pluginMachineFromState(state: Pick<AppState, "selectedMachine">): PluginMachine {
+  const machine = state.selectedMachine;
+  if (machine !== undefined) return { id: machine.id, name: machine.name, kind: machine.kind };
+  return { id: "local", name: "local", kind: "local" };
 }

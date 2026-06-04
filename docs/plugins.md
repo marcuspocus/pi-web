@@ -7,7 +7,8 @@ Plugins can currently:
 - add action-palette commands;
 - add workspace tools/panels next to Files, Git, and Terminal;
 - add compact workspace-label items in the workspace list, panel header, and status bar;
-- call browser APIs and PI WEB HTTP/WebSocket APIs available to the current browser session;
+- call browser APIs and documented PI WEB plugin context helpers;
+- read workspace files and start workspace terminal commands through documented helpers;
 - serve their own static assets from the plugin directory.
 
 They do **not** run in the session daemon, do not get a server-side hook API, and are not sandboxed.
@@ -17,10 +18,11 @@ They do **not** run in the session daemon, do not get a server-side hook API, an
 Plugins run as JavaScript in the browser app. Treat them as trusted code:
 
 - they can call browser APIs;
-- they can `fetch()` PI WEB API endpoints using the current browser access;
-- they can read workspace files through PI WEB's file endpoints if the UI can read them;
+- they can read workspace files and start terminal commands through documented plugin helpers;
 - they can render arbitrary Lit templates/custom elements in plugin contribution areas;
 - they should not be installed from untrusted sources.
+
+PI WEB's `/api/...` HTTP and WebSocket endpoints are internal implementation details. Plugin code should not fetch PI WEB API endpoints directly; use the documented context helpers instead.
 
 ## What to ask AI to build
 
@@ -405,6 +407,7 @@ interface PluginRuntimeContext {
   state: {
     selectedWorkspace?: Workspace;
     selectedSession?: unknown;
+    piWebStatus?: PiWebStatusResponse;
   };
   openActionPalette: () => void;
   focusPrompt: () => void;
@@ -424,12 +427,12 @@ interface PluginRuntimeContext {
 Notes:
 
 - `state` is a snapshot of current UI state when actions are built.
-- Only `state.selectedWorkspace` and `state.selectedSession` are documented as stable for plugin authors.
+- The stable state fields are `state.selectedWorkspace`, `state.selectedSession`, and `state.piWebStatus`.
 - Other `state` fields may exist at runtime, but they are PI WEB internals and can change quickly.
 - `enabled` is evaluated when the action palette asks for actions.
 - `selectWorkspaceTool()` expects a qualified panel id such as `my-plugin:workspace.info`.
 - `openTerminal()` switches to the built-in terminal panel. Pass `{ terminalId }` to deep-link to a specific terminal.
-- Only fields documented here and declared in `plugin-api.d.ts` are stable public plugin API. PI WEB may attach `piWebInternal` fields at runtime for first-party dogfooding; plugins should not depend on those fields because they can change or disappear without notice.
+- Only fields documented here and declared in `plugin-api.d.ts` are stable public plugin API. Unstable runtime fields are intentionally omitted from these types; if a plugin author chooses to depend on them, they must explicitly import unstable types from `@jmfederico/pi-web/plugin-api/unstable` and type-assert the context in their own code.
 
 #### Keyboard shortcuts
 
@@ -477,24 +480,45 @@ interface WorkspacePanelContribution {
   title: string;
   icon?: TemplateResult;
   order?: number;
-  visible?: (context: { workspace: Workspace }) => boolean;
+  visible?: (context: WorkspacePanelContext) => boolean;
   badge?: (context: WorkspacePanelContext) => string | number | TemplateResult | undefined;
   render: (context: WorkspacePanelContext) => TemplateResult;
 }
 
 interface WorkspacePanelContext {
+  machine: PluginMachine;
   workspace: Workspace;
+  state?: PluginRuntimeState;
+  files: {
+    readFile(path: string): Promise<FileContentResponse>;
+  };
+  terminal: {
+    open(options?: { terminalId?: string }): void;
+    runCommand(input: {
+      title: string;
+      command: string;
+      metadata?: Record<string, string>;
+      open?: boolean;
+    }): Promise<TerminalCommandRunHandle>;
+  };
+  requestRender: () => void;
   openTerminal: (options?: { terminalId?: string }) => void;
 }
 ```
 
 `icon` is optional and is used in the compact mobile tab bar. Prefer an SVG rendered with the `svg` helper from `PluginActivationContext`; use `currentColor` so PI WEB themes can style it. If `icon` is omitted, mobile tabs fall back to initials from the panel title, or to the full title when initials collide.
 
-`workspace` and `openTerminal()` are documented as stable for panel callbacks. Other fields may exist at runtime, but they are PI WEB internals and can change quickly. If a panel needs file, git, terminal, or session data beyond the helpers documented here, prefer explicit `fetch()` calls and keep them isolated.
+`machine`, `workspace`, `files`, `terminal`, `requestRender()`, and `openTerminal()` are documented as stable for panel callbacks. `terminal.open()` is equivalent to `openTerminal()`; new plugins should prefer `terminal.open()` so terminal-related helpers live under one capability.
 
-Useful workspace shape:
+Useful workspace and machine shapes:
 
 ```ts
+interface PluginMachine {
+  id: string;
+  name: string;
+  kind: "local" | "remote";
+}
+
 interface Workspace {
   id: string;
   projectId: string;
@@ -506,6 +530,8 @@ interface Workspace {
   isGitWorktree: boolean;
 }
 ```
+
+`machine.id` is included in panel contexts so plugins can keep caches machine-scoped. Do not infer the selected machine from global browser state.
 
 Use existing classes such as `toolbar`, `viewer`, `empty`, and `muted` for panel content when possible. Do not assume a panel owns the whole page; keep layout contained.
 
@@ -543,11 +569,13 @@ interface WorkspaceLabelContribution {
 }
 
 interface WorkspaceLabelContext {
+  machine: PluginMachine;
   workspace: Workspace;
+  state?: PluginRuntimeState;
 }
 ```
 
-Only `workspace` is documented as stable for label callbacks. Other fields may exist at runtime, but they are PI WEB internals and can change quickly.
+`machine` and `workspace` are documented as stable for label callbacks. Include `machine.id` in any label caches that depend on workspace data.
 
 Items are sorted by `order` and then id. Return an empty array to render nothing.
 
@@ -609,55 +637,71 @@ export default {
 
 ## Reading workspace files
 
-Plugins can use existing PI WEB endpoints. For example, to read a file in a workspace:
+Workspace panels can read files through the documented `files` helper. PI WEB binds this helper to the panel's machine and workspace, so it works the same for local and federated machines.
 
 ```js
-async function readWorkspaceFile(workspace, path) {
-  const url =
-    `/api/projects/${encodeURIComponent(workspace.projectId)}` +
-    `/workspaces/${encodeURIComponent(workspace.id)}` +
-    `/file?path=${encodeURIComponent(path)}`;
+workspacePanels: [
+  {
+    id: "workspace.env",
+    title: "Env",
+    render: ({ files, requestRender }) => html`
+      <my-env-viewer .files=${files} .requestRender=${requestRender}></my-env-viewer>
+    `,
+  },
+]
 
-  const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) throw new Error(`Failed to read ${path}: ${response.status}`);
-  return await response.json();
+class MyEnvViewer extends HTMLElement {
+  set files(value) {
+    this._files = value;
+    void this.load();
+  }
+
+  async load() {
+    try {
+      const file = await this._files.readFile(".env.example");
+      this.textContent = file.binary ? "Binary file" : file.content;
+    } catch (error) {
+      this.textContent = error instanceof Error ? error.message : String(error);
+    }
+  }
 }
 ```
 
-The file response includes fields such as `path`, `content`, `truncated`, and `binary`, but endpoint response shapes are private PI WEB implementation details for now and can change between releases.
+The file response includes fields such as `path`, `content`, `truncated`, and `binary`. Be careful with sensitive files such as `.env`: plugins are trusted browser code, and file contents are exposed to the plugin.
 
-Be careful with sensitive files such as `.env`: plugins are trusted browser code, and file contents are exposed to the plugin.
+## Running workspace terminal commands
 
-## Other useful PI WEB APIs
+Workspace panels can start terminal commands through the documented `terminal` helper. Commands run in the current workspace on the panel's machine.
 
-Plugins may call any endpoint available to the browser, but these HTTP endpoints are considered private PI WEB implementation APIs for now. They can change quickly between releases. Prefer plugin runtime context helpers when they cover the interaction, and keep any direct HTTP usage small and isolated.
-
-Common read endpoints:
-
-```text
-GET /api/projects
-GET /api/projects/:projectId/workspaces
-GET /api/projects/:projectId/workspaces/:workspaceId/tree?path=<dir>
-GET /api/projects/:projectId/workspaces/:workspaceId/file?path=<file>
-GET /api/projects/:projectId/workspaces/:workspaceId/git/status
-GET /api/projects/:projectId/workspaces/:workspaceId/git/diff?path=<file>&staged=true|false
-GET /api/sessions?cwd=<workspace-path>
-GET /api/sessions/:sessionId/status
-GET /api/sessions/:sessionId/messages?before=<cursor>&limit=<n>
+```js
+render: ({ terminal }) => html`
+  <button @click=${() => terminal.runCommand({
+    title: "Build",
+    command: "npm run build",
+    open: true,
+    metadata: { "my-plugin.task": "build" },
+  })}>Build</button>
+`
 ```
 
-Common write/action endpoints:
+Review command strings carefully. They are trusted shell commands executed in the workspace terminal.
 
-```text
-POST /api/sessions                 { "cwd": "/path/to/workspace" }
-POST /api/sessions/:id/prompt      { "text": "...", "streamingBehavior": "steer" | "followUp" }
-POST /api/sessions/:id/shell       { "text": "..." }
-POST /api/sessions/:id/stop
-POST /api/sessions/:id/archive
-POST /api/sessions/:id/restore
+## Internal PI WEB APIs and explicit unstable opt-in
+
+PI WEB's `/api/...` HTTP and WebSocket routes are private implementation details. Plugin code should not fetch PI WEB API endpoints directly because those URLs, response shapes, and machine-federation routing rules can change.
+
+If a plugin author deliberately chooses to depend on an unstable runtime field while a public helper is still being designed, make that decision explicit in code with a type-only unstable import and a local type assertion:
+
+```ts
+import type { WorkspacePanelContext } from "@jmfederico/pi-web/plugin-api";
+import type { UnstableWorkspacePanelContext } from "@jmfederico/pi-web/plugin-api/unstable";
+
+function unstableContext(context: WorkspacePanelContext) {
+  return context as WorkspacePanelContext & UnstableWorkspacePanelContext;
+}
 ```
 
-Prefer runtime context helpers (`startSession`, `stopActiveWork`, `refreshFiles`, `refreshGit`, etc.) when they cover the interaction. Use direct HTTP calls only for plugin-specific data or behavior, and expect to update them as PI WEB evolves.
+Unstable APIs are not covered by the v1 compatibility promise. Prefer documented helpers whenever they exist.
 
 ## Async data and caching
 
@@ -666,7 +710,7 @@ PI WEB does not provide a plugin cache/invalidation framework. Keep host callbac
 - simple contributions should be synchronous and cheap;
 - expensive or async work should live inside the plugin;
 - custom elements in `type: "render"` label items or panels are a good place to own async loading;
-- dedupe fetches and avoid unbounded polling;
+- dedupe async reads/commands and avoid unbounded polling;
 - clean up intervals/event listeners in custom elements' `disconnectedCallback()`.
 
 ## Agent implementation checklist
@@ -684,8 +728,8 @@ If you are an AI agent building or editing a PI WEB plugin, follow this checklis
 9. Add workspace panels for larger workspace UI.
 10. Add workspace labels for compact inline metadata.
 11. Return arrays from workspace label `items()`; return an empty array to render nothing.
-12. Use stable context fields first; only `workspace`, `state.selectedWorkspace`, and `state.selectedSession` are documented as stable.
-13. Use `fetch()` against PI WEB APIs only for plugin-specific behavior not provided by runtime context helpers, and isolate those calls because HTTP endpoints are private for now.
+12. Use documented context helpers first: `files`, `terminal`, `requestRender`, `workspace`, `machine`, `state.selectedWorkspace`, `state.selectedSession`, and `state.piWebStatus`.
+13. Do not fetch PI WEB `/api/...` endpoints directly. If an unstable runtime field is intentionally required, import the type from `@jmfederico/pi-web/plugin-api/unstable` and type-assert locally.
 14. Treat plugins as trusted code and avoid reading or displaying secrets unless intentional.
 15. After local edits, tell the user to hard reload the browser and check the console for plugin errors.
 

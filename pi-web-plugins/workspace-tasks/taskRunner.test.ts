@@ -1,24 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Workspace } from "@jmfederico/pi-web/plugin-api";
+import type { TerminalCommandRun, WorkspacePanelTerminal } from "@jmfederico/pi-web/plugin-api";
 import { runWorkspaceTaskInTerminal } from "./taskRunner";
 import type { WorkspaceTask } from "./config";
-import type { InternalTerminalCommandRun, InternalTerminalCommandRunsRuntime } from "./piWebInternal";
 
-const workspace: Workspace = {
-  id: "workspace 1",
-  projectId: "project/1",
-  path: "/repo",
-  label: "repo",
-  isMain: false,
-  isGitRepo: true,
-  isGitWorktree: true,
-};
-
-const run: InternalTerminalCommandRun = {
+const run: TerminalCommandRun = {
   id: "run1",
   origin: "workspace-tasks",
-  projectId: workspace.projectId,
-  workspaceId: workspace.id,
+  projectId: "project/1",
+  workspaceId: "workspace 1",
   terminalId: "term1",
   title: "Build",
   command: "npm run build",
@@ -28,20 +17,19 @@ const run: InternalTerminalCommandRun = {
 };
 
 describe("task runner", () => {
-  it("starts workspace tasks through the internal terminal command-run helper", async () => {
+  it("starts workspace tasks through the public workspace terminal helper", async () => {
     const task: WorkspaceTask = { id: "build", title: "Build", command: "npm run build", confirm: false };
-    const runCommand = vi.fn<InternalTerminalCommandRunsRuntime["runCommand"]>(() => Promise.resolve({ run, completed: Promise.resolve(run) }));
-    const terminal: InternalTerminalCommandRunsRuntime = {
+    const runCommand = vi.fn<WorkspacePanelTerminal["runCommand"]>(() => Promise.resolve({ run, completed: Promise.resolve(run) }));
+    const terminal: WorkspacePanelTerminal = {
       runCommand,
       open: vi.fn(),
     };
 
-    const handle = await runWorkspaceTaskInTerminal(terminal, workspace, task);
+    const handle = await runWorkspaceTaskInTerminal(terminal, task);
 
     expect(handle.run).toEqual(run);
     await expect(handle.completed).resolves.toEqual(run);
     expect(runCommand).toHaveBeenCalledWith({
-      workspace,
       title: "Build",
       command: "npm run build",
       open: true,

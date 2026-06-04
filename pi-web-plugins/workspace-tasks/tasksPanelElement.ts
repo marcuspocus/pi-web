@@ -1,13 +1,9 @@
-import type { Workspace } from "@jmfederico/pi-web/plugin-api";
+import type { WorkspacePanelContext } from "@jmfederico/pi-web/plugin-api";
 import { TASKS_CONFIG_PATH, type WorkspaceTask } from "./config.js";
 import { runWorkspaceTaskInTerminal } from "./taskRunner.js";
-import { requestPiWebRender } from "./piWebPrivateUi.js";
-import type { InternalTerminalCommandRunsRuntime } from "./piWebInternal.js";
 import { loadWorkspaceTasksConfig, tasksConfigRefreshHint, tasksConfigUnavailableMessage, type WorkspaceTasksConfigLoadResult } from "./workspaceTasksClient.js";
 
 export const tasksPanelTagName = "pi-web-workspace-tasks-panel";
-
-export type OpenTerminal = (options?: { terminalId?: string | undefined }) => void;
 
 const configChangedEvent = "pi-web-workspace-tasks-config-changed";
 
@@ -27,17 +23,15 @@ export function defineTasksPanelElement(): void {
   if (!customElements.get(tasksPanelTagName)) customElements.define(tasksPanelTagName, PiWebTasksPanel);
 }
 
-export function tasksPanelBadge(workspace: Workspace): string | number | undefined {
-  const state = getCachedWorkspaceConfig(workspace);
+export function tasksPanelBadge(context: WorkspacePanelContext): string | number | undefined {
+  const state = getCachedWorkspaceConfig(context);
   if (state?.kind === "unavailable") return "!";
   if (state?.kind === "loaded" && state.config.tasks.length > 0) return state.config.tasks.length;
   return undefined;
 }
 
 class PiWebTasksPanel extends HTMLElement {
-  private workspaceValue: Workspace | undefined;
-  private openTerminalValue: OpenTerminal | undefined;
-  private terminalCommandRunsValue: InternalTerminalCommandRunsRuntime | undefined;
+  private contextValue: WorkspacePanelContext | undefined;
   private runningTaskId: string | undefined;
   private status: TaskStatus | undefined;
   private readonly root: ShadowRoot;
@@ -50,24 +44,16 @@ class PiWebTasksPanel extends HTMLElement {
     this.root = this.attachShadow({ mode: "open" });
   }
 
-  set workspace(value: Workspace | undefined) {
-    const previousKey = this.workspaceValue === undefined ? undefined : cacheKeyForWorkspace(this.workspaceValue);
-    const nextKey = value === undefined ? undefined : cacheKeyForWorkspace(value);
-    this.workspaceValue = value;
+  set context(value: WorkspacePanelContext | undefined) {
+    const previousKey = this.contextValue === undefined ? undefined : cacheKeyForContext(this.contextValue);
+    const nextKey = value === undefined ? undefined : cacheKeyForContext(value);
+    this.contextValue = value;
     // Parent app updates should not rebuild this shadow DOM for the same workspace:
     // doing so resets the mobile scroll position and can replace buttons mid-click.
     if (previousKey === nextKey) return;
     this.runningTaskId = undefined;
     this.status = undefined;
     this.render();
-  }
-
-  set openTerminal(value: OpenTerminal | undefined) {
-    this.openTerminalValue = value;
-  }
-
-  set terminalCommandRuns(value: InternalTerminalCommandRunsRuntime | undefined) {
-    this.terminalCommandRunsValue = value;
   }
 
   connectedCallback(): void {
@@ -80,13 +66,13 @@ class PiWebTasksPanel extends HTMLElement {
   }
 
   private render(): void {
-    const workspace = this.workspaceValue;
-    if (workspace === undefined) {
+    const context = this.contextValue;
+    if (context === undefined) {
       this.root.innerHTML = `${taskStyles()}<section class="empty">Select a workspace.</section>`;
       return;
     }
 
-    const state = getOrLoadWorkspaceConfig(workspace);
+    const state = getOrLoadWorkspaceConfig(context);
     this.root.innerHTML = `
       ${taskStyles()}
       <section class="toolbar">
@@ -103,12 +89,12 @@ class PiWebTasksPanel extends HTMLElement {
     `;
 
     this.root.querySelector("button[data-refresh-config]")?.addEventListener("click", () => {
-      void this.refreshConfig(workspace);
+      void this.refreshConfig(context);
     });
 
     for (const button of this.root.querySelectorAll("button[data-task-id]")) {
       button.addEventListener("click", () => {
-        void this.dispatchTaskById(workspace, button.getAttribute("data-task-id"));
+        void this.dispatchTaskById(context, button.getAttribute("data-task-id"));
       });
     }
 
@@ -117,19 +103,19 @@ class PiWebTasksPanel extends HTMLElement {
     });
   }
 
-  private dispatchTaskById(workspace: Workspace, taskId: string | null): Promise<void> {
-    if (!this.isCurrentWorkspace(workspace)) return Promise.resolve();
-    const task = taskFromConfigState(getCachedWorkspaceConfig(workspace), taskId);
+  private dispatchTaskById(context: WorkspacePanelContext, taskId: string | null): Promise<void> {
+    if (!this.isCurrentContext(context)) return Promise.resolve();
+    const task = taskFromConfigState(getCachedWorkspaceConfig(context), taskId);
     if (task === undefined) {
       this.status = { kind: "error", message: "That task is no longer available. Click Refresh, then try again." };
       this.render();
       return Promise.resolve();
     }
-    return this.dispatchTask(workspace, task);
+    return this.dispatchTask(context, task);
   }
 
-  private isCurrentWorkspace(workspace: Workspace): boolean {
-    return this.workspaceValue !== undefined && cacheKeyForWorkspace(this.workspaceValue) === cacheKeyForWorkspace(workspace);
+  private isCurrentContext(context: WorkspacePanelContext): boolean {
+    return this.contextValue !== undefined && cacheKeyForContext(this.contextValue) === cacheKeyForContext(context);
   }
 
   private renderConfigState(state: ConfigState): string {
@@ -150,20 +136,20 @@ class PiWebTasksPanel extends HTMLElement {
     return `<div class="status panel-status ${escapeAttr(this.status.kind)}">${escapeHtml(this.status.message)}${detail}</div>`;
   }
 
-  private async refreshConfig(workspace: Workspace): Promise<void> {
+  private async refreshConfig(context: WorkspacePanelContext): Promise<void> {
     this.status = { kind: "info", message: `Refreshing ${TASKS_CONFIG_PATH}…` };
-    configCache.set(cacheKeyForWorkspace(workspace), { kind: "loading" });
+    configCache.set(cacheKeyForContext(context), { kind: "loading" });
     this.render();
 
-    const state = await refreshWorkspaceConfig(workspace);
-    if (!this.isCurrentWorkspace(workspace)) return;
+    const state = await refreshWorkspaceConfig(context);
+    if (!this.isCurrentContext(context)) return;
     this.status = state.kind === "loaded"
       ? { kind: "success", message: `Loaded ${String(state.config.tasks.length)} task${state.config.tasks.length === 1 ? "" : "s"}.` }
       : undefined;
     this.render();
   }
 
-  private async dispatchTask(workspace: Workspace, task: WorkspaceTask): Promise<void> {
+  private async dispatchTask(context: WorkspacePanelContext, task: WorkspaceTask): Promise<void> {
     if (this.runningTaskId !== undefined) {
       this.status = { kind: "info", message: "Another task is already starting. Wait for it to finish dispatching, then try again." };
       this.render();
@@ -175,20 +161,13 @@ class PiWebTasksPanel extends HTMLElement {
       return;
     }
 
-    const terminal = this.terminalCommandRunsValue;
-    if (terminal === undefined) {
-      this.status = { kind: "error", message: "This PI WEB version does not provide terminal command helpers to plugins." };
-      this.render();
-      return;
-    }
-
     this.runningTaskId = task.id;
     this.status = { kind: "info", message: `Starting ${task.title}…` };
     this.render();
 
     try {
-      const handle = await runWorkspaceTaskInTerminal(terminal, workspace, task);
-      if (!this.isCurrentWorkspace(workspace)) return;
+      const handle = await runWorkspaceTaskInTerminal(context.terminal, task);
+      if (!this.isCurrentContext(context)) return;
       this.status = {
         kind: "success",
         message: `Started terminal command “${handle.run.title}”.`,
@@ -197,7 +176,7 @@ class PiWebTasksPanel extends HTMLElement {
       this.runningTaskId = undefined;
       this.render();
     } catch (error) {
-      if (!this.isCurrentWorkspace(workspace)) return;
+      if (!this.isCurrentContext(context)) return;
       this.runningTaskId = undefined;
       this.status = { kind: "error", message: error instanceof Error ? error.message : String(error) };
       this.render();
@@ -205,50 +184,47 @@ class PiWebTasksPanel extends HTMLElement {
   }
 
   private openWorkspaceTerminal(terminalId?: string): void {
-    if (this.terminalCommandRunsValue !== undefined) {
-      this.terminalCommandRunsValue.open(terminalId === undefined ? undefined : { terminalId });
-      return;
-    }
-    if (this.openTerminalValue === undefined) {
-      this.status = { kind: "error", message: "This PI WEB version does not provide terminal navigation to plugins." };
+    const context = this.contextValue;
+    if (context === undefined) {
+      this.status = { kind: "error", message: "Select a workspace before opening a terminal." };
       this.render();
       return;
     }
-    if (terminalId === undefined) this.openTerminalValue();
-    else this.openTerminalValue({ terminalId });
+    if (terminalId === undefined) context.terminal.open();
+    else context.terminal.open({ terminalId });
   }
 }
 
-function getCachedWorkspaceConfig(workspace: Workspace): ConfigState | undefined {
-  return configCache.get(cacheKeyForWorkspace(workspace));
+function getCachedWorkspaceConfig(context: WorkspacePanelContext): ConfigState | undefined {
+  return configCache.get(cacheKeyForContext(context));
 }
 
-function getOrLoadWorkspaceConfig(workspace: Workspace): ConfigState {
-  const cached = getCachedWorkspaceConfig(workspace);
+function getOrLoadWorkspaceConfig(context: WorkspacePanelContext): ConfigState {
+  const cached = getCachedWorkspaceConfig(context);
   if (cached !== undefined) return cached;
 
   const loading: ConfigState = { kind: "loading" };
-  configCache.set(cacheKeyForWorkspace(workspace), loading);
-  void refreshWorkspaceConfig(workspace);
+  configCache.set(cacheKeyForContext(context), loading);
+  void refreshWorkspaceConfig(context);
   return loading;
 }
 
-async function refreshWorkspaceConfig(workspace: Workspace): Promise<ConfigState> {
-  const key = cacheKeyForWorkspace(workspace);
-  const state = await loadWorkspaceTasksConfig(workspace).catch((error: unknown): ConfigState => ({
+async function refreshWorkspaceConfig(context: WorkspacePanelContext): Promise<ConfigState> {
+  const key = cacheKeyForContext(context);
+  const state = await loadWorkspaceTasksConfig(context.files).catch((error: unknown): ConfigState => ({
     kind: "unavailable",
     message: tasksConfigUnavailableMessage,
     hint: tasksConfigRefreshHint,
     detail: error instanceof Error ? error.message : String(error),
   }));
   configCache.set(key, state);
-  requestPiWebRender();
+  context.requestRender();
   window.dispatchEvent(new Event(configChangedEvent));
   return state;
 }
 
-function cacheKeyForWorkspace(workspace: Workspace): string {
-  return `${workspace.projectId}:${workspace.id}`;
+function cacheKeyForContext(context: WorkspacePanelContext): string {
+  return `${context.machine.id}:${context.workspace.projectId}:${context.workspace.id}`;
 }
 
 function renderMissingState(state: Extract<ConfigState, { kind: "missing" }>): string {

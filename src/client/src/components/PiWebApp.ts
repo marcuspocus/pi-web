@@ -1,6 +1,6 @@
 import { LitElement, html } from "lit";
 import { customElement, query, state } from "lit/decorators.js";
-import { configApi, piWebApi, terminalsApi, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type RealtimeEvent, type SessionInfo, type TerminalCommandRun, type TerminalUiEvent, type ThinkingLevel, type Workspace } from "../api";
+import { configApi, piWebApi, terminalsApi, workspacesApi, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type RealtimeEvent, type SessionInfo, type TerminalCommandRun, type TerminalUiEvent, type ThinkingLevel, type Workspace } from "../api";
 import type { AppAction } from "../actions";
 import { initialAppState, type AppState } from "../appState";
 import { isSessionActive } from "../../../shared/activity";
@@ -17,7 +17,7 @@ import { InMemoryTerminalSelectionMemory } from "../controllers/terminalSelectio
 import { KeyboardShortcutDispatcher } from "../keyboardShortcuts";
 import { selectedMachineId } from "../controllers/types";
 import { RealtimeSocket } from "../sessionSocket";
-import type { QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspacePanelContribution, PluginRuntimeContext, TerminalCommandRunsInternalRuntime, WorkspacePanelContext } from "../plugins/types";
+import type { PluginMachine, QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspacePanelContribution, PluginRuntimeContext, TerminalCommandRunsInternalRuntime, WorkspacePanelContext } from "../plugins/types";
 import { CLASSIC_THEME_ID, DEFAULT_THEME_PREFERENCE, applyPiWebTheme, findThemePairForTheme, readStoredThemePreference, resolveThemePreference, writeStoredThemePreference, type ThemePreference, type ThemePreferenceResolution } from "../theme";
 import { corePlugin } from "../plugins/core";
 import { themePackPlugin } from "../plugins/themes";
@@ -828,7 +828,8 @@ export class PiWebApp extends LitElement {
   private visibleWorkspacePanels(): QualifiedWorkspacePanelContribution[] {
     const workspace = this.state.selectedWorkspace;
     if (workspace === undefined) return [];
-    return this.plugins.getWorkspacePanels().filter((panel) => panel.visible?.({ workspace, state: this.state }) ?? true);
+    const context = this.createWorkspacePanelContext(workspace);
+    return this.plugins.getWorkspacePanels().filter((panel) => panel.visible?.(context) ?? true);
   }
 
   private workspacePanelEmptyState(): WorkspacePanelEmptyState {
@@ -892,31 +893,45 @@ export class PiWebApp extends LitElement {
   }
 
   private createWorkspacePanelContext(workspace: Workspace): WorkspacePanelContext {
-    const createContext = (origin: string): WorkspacePanelContext => installWorkspacePanelScope({
-      workspace,
-      state: this.state,
-      piWebInternal: { terminalCommandRuns: this.terminalCommandRunsForOrigin(origin) },
-      fileTree: this.state.fileTree,
-      expandedDirs: this.state.expandedDirs,
-      selectedFilePath: this.state.selectedFilePath,
-      selectedFileContent: this.state.selectedFileContent,
-      fileTreeStale: this.state.fileTreeStale,
-      gitStatus: this.state.gitStatus,
-      selectedDiffPath: this.state.selectedDiffPath,
-      selectedDiff: this.state.selectedDiff,
-      selectedStagedDiff: this.state.selectedStagedDiff,
-      gitStale: this.state.gitStale,
-      activeTerminalCount: this.state.activeTerminalCount,
-      selectedTerminalId: this.state.selectedTerminalId,
-      terminalAutoStart: this.terminalAutoStartWorkspaceId === workspace.id,
-      openTerminal: (options) => { this.openTerminal(options); },
-      onRefreshFiles: () => { void this.files.refreshFiles(); },
-      onExpandDir: (path: string) => { void this.files.expandDir(path); },
-      onSelectFile: (path: string) => { void this.files.selectFile(path); },
-      onRefreshGit: () => { void this.git.refreshGit(); },
-      onSelectDiff: (path: string) => { void this.git.selectDiff(path); },
-      onSelectTerminal: (terminalId: string | undefined, options?: { replace?: boolean | undefined }) => { this.selectTerminal(terminalId, options); },
-    }, createContext);
+    const machine = pluginMachineFromState(this.state);
+    const machineId = machine.id;
+    const createContext = (origin: string): WorkspacePanelContext => {
+      const terminalCommandRuns = this.terminalCommandRunsForOrigin(origin, machineId);
+      return installWorkspacePanelScope({
+        machine,
+        workspace,
+        state: this.state,
+        files: {
+          readFile: (path: string) => workspacesApi.workspaceFile(workspace.projectId, workspace.id, path, machineId),
+        },
+        terminal: {
+          open: (options) => { void this.openRuntimeTerminal(machineId, workspace, options); },
+          runCommand: (input) => terminalCommandRuns.runCommand({ ...input, workspace }),
+        },
+        requestRender: () => { this.requestUpdate(); },
+        piWebUnstable: { terminalCommandRuns },
+        fileTree: this.state.fileTree,
+        expandedDirs: this.state.expandedDirs,
+        selectedFilePath: this.state.selectedFilePath,
+        selectedFileContent: this.state.selectedFileContent,
+        fileTreeStale: this.state.fileTreeStale,
+        gitStatus: this.state.gitStatus,
+        selectedDiffPath: this.state.selectedDiffPath,
+        selectedDiff: this.state.selectedDiff,
+        selectedStagedDiff: this.state.selectedStagedDiff,
+        gitStale: this.state.gitStale,
+        activeTerminalCount: this.state.activeTerminalCount,
+        selectedTerminalId: this.state.selectedTerminalId,
+        terminalAutoStart: this.terminalAutoStartWorkspaceId === workspace.id,
+        openTerminal: (options) => { this.openTerminal(options); },
+        onRefreshFiles: () => { void this.files.refreshFiles(); },
+        onExpandDir: (path: string) => { void this.files.expandDir(path); },
+        onSelectFile: (path: string) => { void this.files.selectFile(path); },
+        onRefreshGit: () => { void this.git.refreshGit(); },
+        onSelectDiff: (path: string) => { void this.git.selectDiff(path); },
+        onSelectTerminal: (terminalId: string | undefined, options?: { replace?: boolean | undefined }) => { this.selectTerminal(terminalId, options); },
+      }, createContext);
+    };
     return createContext("core");
   }
 
@@ -944,7 +959,7 @@ export class PiWebApp extends LitElement {
   private createPluginRuntimeContext(): PluginRuntimeContext {
     const createContext = (origin: string): PluginRuntimeContext => installPluginRuntimeScope({
       state: this.state,
-      piWebInternal: {
+      piWebUnstable: {
         terminalCommandRuns: this.terminalCommandRunsForOrigin(origin),
         openSettings: (section) => { this.openSettings(section); },
       },
@@ -1341,6 +1356,12 @@ function createPluginRegistry(): PluginRegistry {
   registry.register({ id: "core", plugin: corePlugin });
   registry.register({ id: "themes", plugin: themePackPlugin });
   return registry;
+}
+
+function pluginMachineFromState(state: Pick<AppState, "selectedMachine">): PluginMachine {
+  const machine = state.selectedMachine;
+  if (machine !== undefined) return { id: machine.id, name: machine.name, kind: machine.kind };
+  return { id: "local", name: "local", kind: "local" };
 }
 
 function machineActivitySubscriptionInputsChanged(previous: AppState, next: AppState): boolean {
