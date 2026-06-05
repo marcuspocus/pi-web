@@ -89,7 +89,9 @@
               </ul>
               <p>
                 Plugins cannot extend the session daemon or add server-side hooks. They run in the browser UI only.
-                PI WEB's internal API routes are not plugin API; use documented context helpers instead.
+                Use documented context helpers for the stable API surface. Daring plugins can reach into PI WEB
+                internals, but those private surfaces are experimental: they may graduate into stable helpers, change
+                shape, or disappear.
               </p>
               <div class="callout">
                 The plugin API is intentionally limited and actively developed. Feedback is appreciated: if an extension
@@ -347,8 +349,8 @@ After editing, check the manifest endpoint and browser-console failure cases.</c
               </p>
               <p>
                 If you want to understand the API yourself, ask an agent to read that file and explain the relevant
-                extension points for the plugin you want. The Markdown reference also marks which context fields are
-                stable and which PI WEB internals should be avoided unless necessary.
+                public extension points for the plugin you want. Private PI WEB internals exist for the daring; treat
+                them as experimental surfaces that may graduate into stable helpers, change shape, or disappear.
               </p>
             </section>
 
@@ -376,8 +378,10 @@ After editing, check the manifest endpoint and browser-console failure cases.</c
             <section id="trust">
               <h2>Trust model</h2>
               <p>
-                Plugins are not sandboxed. They run as JavaScript in the browser, can call PI WEB APIs available to the
-                current session, and can render arbitrary UI. Install only plugins you trust.
+                Plugins are not sandboxed. They run as JavaScript in the browser, can use browser APIs, call documented
+                PI WEB helpers, and render arbitrary UI. If a plugin reaches beyond those helpers into private PI WEB
+                internals, treat that dependency as experimental: it may become stable, change shape, or disappear.
+                Install only plugins you trust.
               </p>
               <p>
                 Plugins do not run inside the session daemon and do not provide server-side hooks.

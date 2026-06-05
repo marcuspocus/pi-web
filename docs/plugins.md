@@ -22,7 +22,7 @@ Plugins run as JavaScript in the browser app. Treat them as trusted code:
 - they can render arbitrary Lit templates/custom elements in plugin contribution areas;
 - they should not be installed from untrusted sources.
 
-PI WEB's `/api/...` HTTP and WebSocket endpoints are internal implementation details. Plugin code should not fetch PI WEB API endpoints directly; use the documented context helpers instead.
+PI WEB's `/api/...` HTTP and WebSocket endpoints are internal implementation details. Plugin code should use the documented context helpers instead. Daring plugins can still reach private routes or runtime objects because they run in the browser, but those private surfaces are experimental: they may graduate into stable helpers, change shape, or disappear.
 
 ## What to ask AI to build
 
@@ -451,11 +451,11 @@ Notes:
 
 - `state` is a snapshot of current UI state when actions are built.
 - The stable state fields are `state.selectedWorkspace`, `state.selectedSession`, and `state.piWebStatus`.
-- Other `state` fields may exist at runtime, but they are PI WEB internals and can change quickly.
+- Other `state` fields may exist at runtime, but they are private PI WEB internals that may graduate into stable helpers, change shape, or disappear.
 - `enabled` is evaluated when the action palette asks for actions.
 - `selectWorkspaceTool()` expects a qualified panel id such as `my-plugin:workspace.info`.
 - `openTerminal()` switches to the built-in terminal panel. Pass `{ terminalId }` to deep-link to a specific terminal.
-- Only fields documented here and declared in `plugin-api.d.ts` are stable public plugin API. Unstable runtime fields are intentionally omitted from these types; if a plugin author chooses to depend on them, they must explicitly import unstable types from `@jmfederico/pi-web/plugin-api/unstable` and type-assert the context in their own code.
+- Only fields documented here and declared in `plugin-api.d.ts` are stable public plugin API. Anything else is experimental: it may become public API later, change shape, or disappear.
 
 #### Keyboard shortcuts
 
@@ -763,22 +763,11 @@ render: ({ terminal }) => html`
 
 Review command strings carefully. They are trusted shell commands executed in the workspace terminal.
 
-## Internal PI WEB APIs and explicit unstable opt-in
+## Private and experimental PI WEB APIs
 
-PI WEB's `/api/...` HTTP and WebSocket routes are private implementation details. Plugin code should not fetch PI WEB API endpoints directly because those URLs, response shapes, and machine-federation routing rules can change.
+PI WEB's `/api/...` HTTP and WebSocket routes and runtime-only fields are private implementation details. They exist because plugins are trusted browser code, and because some capabilities may be evaluated there before they are designed as stable helpers.
 
-If a plugin author deliberately chooses to depend on an unstable runtime field while a public helper is still being designed, make that decision explicit in code with a type-only unstable import and a local type assertion:
-
-```ts
-import type { WorkspacePanelContext } from "@jmfederico/pi-web/plugin-api";
-import type { UnstableWorkspacePanelContext } from "@jmfederico/pi-web/plugin-api/unstable";
-
-function unstableContext(context: WorkspacePanelContext) {
-  return context as WorkspacePanelContext & UnstableWorkspacePanelContext;
-}
-```
-
-Unstable APIs are not covered by the v1 compatibility promise. Prefer documented helpers whenever they exist.
+That is allowed, but outside the v1 compatibility promise: URLs, response shapes, runtime fields, and machine-federation routing may graduate into stable APIs, change shape, or disappear. The stable public plugin API is only the documented helpers and declarations in `plugin-api.d.ts`. Prefer those whenever they exist; if you rely on private surfaces, keep the dependency local to the plugin and expect to revisit it after PI WEB upgrades.
 
 ## Async data and caching
 
@@ -806,7 +795,7 @@ If you are an AI agent building or editing a PI WEB plugin, follow this checklis
 10. Add workspace labels for compact inline metadata.
 11. Return arrays from workspace label `items()`; return an empty array to render nothing.
 12. Use documented context helpers first: `files`, `terminal`, `host.requestRender`, `workspace`, `machine`, `state.selectedWorkspace`, `state.selectedSession`, and `state.piWebStatus`.
-13. Do not fetch PI WEB `/api/...` endpoints directly. If an unstable runtime field is intentionally required, import the type from `@jmfederico/pi-web/plugin-api/unstable` and type-assert locally.
+13. Do not fetch PI WEB `/api/...` endpoints directly unless you intentionally accept private API churn; prefer documented helpers.
 14. Treat plugins as trusted code and avoid reading or displaying secrets unless intentional.
 15. After local edits, tell the user to hard reload the browser and check the console for plugin errors.
 
