@@ -1364,7 +1364,7 @@ export class PiWebApp extends LitElement {
   }
 
   private renderAppRefresh() {
-    return html`<app-refresh-control .isRefreshing=${this.isRefreshingApp} .onRefresh=${() => this.refreshAppData()} .onReload=${() => { this.hardReloadApp(); }}></app-refresh-control>`;
+    return html`<app-refresh-control .onReload=${() => { this.hardReloadApp(); }}></app-refresh-control>`;
   }
 
   override render() {

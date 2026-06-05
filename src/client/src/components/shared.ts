@@ -75,14 +75,6 @@ export const appStyles = css`
   .context-item { flex: 0 0 auto; min-width: 0; display: flex; }
   .context-actions { position: absolute; top: 6px; right: 0; bottom: 6px; z-index: 3; display: flex; align-items: center; padding: 0 8px 0 0; pointer-events: none; }
   .context-actions::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; z-index: 0; width: 26px; background: var(--pi-bg); pointer-events: none; }
-  .app-refresh { position: relative; z-index: 1; display: flex; align-items: center; pointer-events: auto; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
-  .app-refresh, .app-refresh * { -webkit-user-select: none; user-select: none; }
-  .app-refresh-button { box-sizing: border-box; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 999px; padding: 0; line-height: 1; touch-action: manipulation; -webkit-touch-callout: none; }
-  .app-refresh-icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
-  .app-refresh-button.refreshing .app-refresh-icon { animation: app-refresh-spin .8s linear infinite; }
-  .app-refresh-menu { position: fixed; z-index: 10000; box-sizing: border-box; min-width: min(170px, calc(100vw - 16px)); overflow: auto; padding: 4px; border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); box-shadow: 0 8px 24px var(--pi-shadow); overflow-wrap: anywhere; }
-  .app-refresh-menu button { display: block; width: 100%; border: 0; background: transparent; color: var(--pi-text); text-align: left; white-space: normal; overflow-wrap: anywhere; }
-  .app-refresh-menu button:hover, .app-refresh-menu button:focus { background: var(--pi-selection-bg); }
   .context-chip { flex: 0 0 auto; min-width: 0; display: inline-flex; align-items: baseline; gap: 5px; border: 1px solid var(--pi-border-muted); border-radius: 999px; background: var(--pi-surface); color: var(--pi-text); padding: 4px 8px; font: inherit; text-align: left; }
   .context-chip:hover { background: var(--pi-surface-hover); }
   .context-chip:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 2px; }
@@ -155,7 +147,6 @@ export const appStyles = css`
   button { border: 1px solid var(--pi-border); border-radius: 8px; background: var(--pi-surface); color: var(--pi-text); padding: 7px 9px; cursor: pointer; }
   .empty { margin: auto; color: var(--pi-muted); }
   .error { padding: 10px 16px; border-bottom: 1px solid var(--pi-border); color: var(--pi-danger); }
-  @keyframes app-refresh-spin { to { transform: rotate(360deg); } }
 `;
 
 export const workspacePanelStyles = css`

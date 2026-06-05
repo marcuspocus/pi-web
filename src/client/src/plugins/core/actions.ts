@@ -88,13 +88,6 @@ export function createCoreActions(): PluginAction[] {
       run: (context) => { context.piWebUnstable?.openSettings?.(); },
     },
     {
-      id: "app.refresh-data",
-      title: "Refresh App Data",
-      description: "Refresh session, status, activity, and the current workspace surface without reloading the page",
-      group: "General",
-      run: (context) => context.refreshAppData(),
-    },
-    {
       id: "app.reload-page",
       title: "Full Page Reload",
       description: "Reload the PI WEB browser page",

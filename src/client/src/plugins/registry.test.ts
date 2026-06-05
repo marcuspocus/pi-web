@@ -174,17 +174,17 @@ describe("PluginRegistry", () => {
     expect(calls).toEqual(["refreshGit"]);
   });
 
-  it("routes app refresh, reload, and settings actions through the runtime context", () => {
+  it("routes app reload and settings actions through the runtime context", () => {
     const registry = new PluginRegistry();
     registry.register({ id: "core", plugin: corePlugin });
     const { context, calls } = createContext();
     const actions = registry.getActions(context);
 
-    void actions.find((candidate) => candidate.id === "core:app.refresh-data")?.run();
+    expect(actions.some((candidate) => candidate.id === "core:app.refresh-data")).toBe(false);
     void actions.find((candidate) => candidate.id === "core:app.reload-page")?.run();
     void actions.find((candidate) => candidate.id === "core:settings.open")?.run();
 
-    expect(calls).toEqual(["refreshAppData", "reloadPage", "openSettings"]);
+    expect(calls).toEqual(["reloadPage", "openSettings"]);
   });
 
   it("exposes terminal navigation as a shortcut-backed action", () => {
