@@ -186,10 +186,7 @@ export const workspacePanelStyles = css`
   .empty-state h2 { margin: 0; color: var(--pi-text); font-size: 15px; line-height: 1.3; }
   .empty-state p { margin: 0; line-height: 1.45; }
   small, .muted { color: var(--pi-muted); }
-  header small { flex: 0 0 auto; min-width: max-content; overflow: visible; text-overflow: clip; white-space: nowrap; }
-  header .workspace-label { width: max-content; max-width: none; overflow: visible; }
-  header .workspace-label-base, header .workspace-label-item, header .workspace-label-render { overflow: visible; text-overflow: clip; }
-  @media (max-width: 1180px) { .tabs { display: none; } }
+  @media (max-width: 1180px) { header { display: none; } }
   .workspace-label { min-width: 0; display: inline-flex; align-items: baseline; gap: 5px; max-width: 100%; overflow: hidden; white-space: nowrap; }
   .workspace-label-base, .workspace-label-item, .workspace-label-render { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .workspace-label-item, .workspace-label-render, .workspace-label-separator { color: var(--pi-muted); }
@@ -395,11 +392,6 @@ export const statusBarStyles = css`
   :host { display: block; color: var(--pi-muted); font: 12px system-ui, sans-serif; }
   .bar { display: flex; gap: 12px; align-items: center; min-width: 0; padding: 7px 12px; border-top: 1px solid var(--pi-border); background: var(--pi-bg); white-space: nowrap; overflow: hidden; }
   span { overflow: hidden; text-overflow: ellipsis; }
-  .workspace-label { min-width: 0; display: inline-flex; align-items: baseline; gap: 5px; max-width: 100%; overflow: hidden; white-space: nowrap; }
-  .workspace-label-base, .workspace-label-item, .workspace-label-render { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  .workspace-label-item, .workspace-label-render, .workspace-label-separator { color: var(--pi-muted); }
-  .workspace-label-link { color: var(--pi-accent); text-decoration: none; }
-  .workspace-label-link:hover, .workspace-label-link:focus { text-decoration: underline; }
   .bar > span:first-child { flex: 1 1 auto; min-width: 80px; }
   .activity { display: inline-flex; align-items: center; gap: 6px; color: var(--pi-muted); }
   .activity.active { color: var(--pi-success); }
