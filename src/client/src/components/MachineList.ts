@@ -3,7 +3,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import type { Machine, MachineHealth, WorkspaceActivity } from "../api";
 import { machineActivityIndicator } from "../workspaceActivity";
 import { actionMenuPanelStyle } from "./actionMenu";
-import { renderActivityIndicator } from "./activityBadge";
+import { renderActionActivityIndicator } from "./activityBadge";
 import { activateSelectableRow, activateSelectableRowFromKeyboard } from "./selectableRow";
 import { listStyles } from "./shared";
 
@@ -67,7 +67,8 @@ export class MachineList extends LitElement {
         @keydown=${(event: KeyboardEvent) => { this.handleMachineKeydown(event, machine); }}
       >
         <div class="action-main">
-          <span class="action-name machine-primary">${this.renderActivity(machine)}<span class="machine-primary-label">${machine.name}</span></span><small>${machine.kind === "local" ? "Local Pi Web" : machine.baseUrl ?? "Remote Pi Web"} · ${statusLabel}</small>
+          <span class="action-name machine-primary"><span class="machine-primary-label">${machine.name}</span></span><small>${machine.kind === "local" ? "Local Pi Web" : machine.baseUrl ?? "Remote Pi Web"} · ${statusLabel}</small>
+          ${this.renderActivity(machine)}
         </div>
         ${hasRemoveAction ? this.renderMachineMenu(machine) : null}
       </div>
@@ -78,7 +79,7 @@ export class MachineList extends LitElement {
     const status = this.statuses[machine.id]?.status ?? machine.status;
     if (status === "offline" || status === "error") return undefined;
     const kind = machineActivityIndicator(this.activities[machine.id]);
-    return renderActivityIndicator(kind, kind === "terminal" ? "Machine terminal active" : "Machine active");
+    return renderActionActivityIndicator(kind, kind === "terminal" ? "Machine terminal active" : "Machine active");
   }
 
   private renderMachineMenu(machine: Machine) {
@@ -139,7 +140,6 @@ export class MachineList extends LitElement {
     css`
       .machine-row.no-actions .action-main { border-radius: 8px; }
       .machine-primary { display: flex; align-items: baseline; gap: 6px; }
-      .machine-primary .activity-indicator { flex: 0 0 auto; margin-right: 0; }
       .machine-primary-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
       .machine-menu-panel button.danger { color: var(--pi-danger); }
       .machine-menu-panel button.danger:hover, .machine-menu-panel button.danger:focus { background: color-mix(in srgb, var(--pi-danger) 14%, transparent); }

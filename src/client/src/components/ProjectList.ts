@@ -3,7 +3,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import type { Project, Workspace, WorkspaceActivity } from "../api";
 import { projectActivityIndicator } from "../workspaceActivity";
 import { actionMenuPanelStyle } from "./actionMenu";
-import { renderActivityIndicator } from "./activityBadge";
+import { renderActionActivityIndicator } from "./activityBadge";
 import { activateSelectableRow, activateSelectableRowFromKeyboard } from "./selectableRow";
 import { listStyles } from "./shared";
 
@@ -55,7 +55,8 @@ export class ProjectList extends LitElement {
                 @keydown=${(event: KeyboardEvent) => { activateSelectableRowFromKeyboard(event, () => this.onSelect?.(project)); }}
               >
                 <div class="action-main">
-                  <span class="action-name">${project.name}</span><small>${this.renderActivity(project)}${project.path}</small>
+                  <span class="action-name">${project.name}</span><small>${project.path}</small>
+                  ${this.renderActivity(project)}
                 </div>
                 <div class="action-menu">
                   <button class="action-menu-toggle" title="Project actions" aria-label=${`Actions for ${project.name}`} @click=${(event: MouseEvent) => { event.stopPropagation(); this.toggleMenu(project.id, event.currentTarget); }}>⋯</button>
@@ -82,7 +83,7 @@ export class ProjectList extends LitElement {
 
   private renderActivity(project: Project) {
     const kind = projectActivityIndicator(project, this.workspacesByProjectId[project.id] ?? [], this.activities);
-    return renderActivityIndicator(kind, kind === "terminal" ? "Project terminal active" : "Project active") ?? "";
+    return renderActionActivityIndicator(kind, kind === "terminal" ? "Project terminal active" : "Project active");
   }
 
   private toggleMenu(projectId: string, target: EventTarget | null) {

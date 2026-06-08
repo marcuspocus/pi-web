@@ -4,7 +4,7 @@ import type { Workspace, WorkspaceActivity } from "../api";
 import type { WorkspaceLabelItem } from "../plugins/types";
 import { workspaceActivityFor, workspaceActivityIndicator } from "../workspaceActivity";
 import { actionMenuPanelStyle } from "./actionMenu";
-import { renderActivityIndicator } from "./activityBadge";
+import { renderActionActivityIndicator } from "./activityBadge";
 import { activateSelectableRow, activateSelectableRowFromKeyboard } from "./selectableRow";
 import { listStyles } from "./shared";
 import { renderWorkspaceLabelInlineItems } from "./workspaceLabel";
@@ -84,13 +84,12 @@ export class WorkspaceList extends LitElement {
 
   private renderActivity(workspace: Workspace): TemplateResult | undefined {
     const kind = workspaceActivityIndicator(workspaceActivityFor(workspace, this.activities));
-    return renderActivityIndicator(kind, kind === "terminal" ? "Workspace terminal active" : "Workspace active");
+    return renderActionActivityIndicator(kind, kind === "terminal" ? "Workspace terminal active" : "Workspace active");
   }
 
   private renderWorkspaceMain(label: string, items: WorkspaceLabelItem[], workspace: Workspace): TemplateResult {
     return html`
       <span class="workspace-primary">
-        ${this.renderActivity(workspace)}
         <span class="workspace-primary-label">${label}</span>
         ${this.isDeleting(workspace) ? html`<span class="workspace-status">Deleting…</span>` : null}
       </span>
@@ -99,6 +98,7 @@ export class WorkspaceList extends LitElement {
           <span class="workspace-label">${renderWorkspaceLabelInlineItems(items)}</span>
         </small>
       `}
+      ${this.renderActivity(workspace)}
     `;
   }
 
