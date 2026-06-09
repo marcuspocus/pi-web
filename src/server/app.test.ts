@@ -37,17 +37,6 @@ beforeEach(async () => {
         return remoteClient;
       },
       now: () => new Date("2026-05-25T00:00:00.000Z"),
-      localStatus: () => Promise.resolve({
-        packageName: "@jmfederico/pi-web",
-        generatedAt: "2026-05-25T00:00:00.000Z",
-        components: {
-          web: { component: "web", label: "PI WEB", stale: false, available: true },
-          sessiond: { component: "sessiond", label: "PI WEB Session Daemon", stale: false, available: true },
-        },
-        release: { packageName: "@jmfederico/pi-web", updateAvailable: false },
-        commands: { update: "", restart: "", restartSystemd: "", restartDev: "" },
-        messages: [],
-      }),
       localRuntime: () => Promise.resolve({
         packageName: "@jmfederico/pi-web",
         generatedAt: "2026-05-25T00:00:00.000Z",

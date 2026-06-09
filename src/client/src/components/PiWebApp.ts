@@ -64,6 +64,7 @@ import { appStyles } from "./shared";
 
 
 const PI_WEB_STATUS_REFRESH_MS = 15 * 60 * 1000;
+const PI_WEB_STATUS_DEFER_MS = 750;
 const GLOBAL_SHORTCUT_LISTENER_OPTIONS = { capture: true } as const;
 const THEME_AUTO_ON_VALUE = "auto:on";
 const THEME_AUTO_OFF_VALUE = "auto:off";
@@ -144,6 +145,7 @@ export class PiWebApp extends LitElement {
   private readonly systemLightThemeMedia = typeof window !== "undefined" && "matchMedia" in window ? window.matchMedia("(prefers-color-scheme: light)") : undefined;
   private terminalAutoStartWorkspaceId: string | undefined;
   private piWebStatusTimer: number | undefined;
+  private piWebStatusDeferredTimer: number | undefined;
   private workspaceDeletionPollTimer: number | undefined;
   private refreshingWorkspaceDeletionRuns = false;
   private readonly handledWorkspaceDeletionRunIds = new Set<string>();
@@ -171,7 +173,7 @@ export class PiWebApp extends LitElement {
   private readonly onFocus = () => {
     this.appShell.repairViewportPosition();
     void this.sessions.refreshSelectedSession();
-    void this.refreshPiWebStatus();
+    this.schedulePiWebStatusRefresh();
     void this.refreshMachineActivities();
     void this.refreshWorkspaceDeletionRuns();
   };
@@ -179,7 +181,7 @@ export class PiWebApp extends LitElement {
     if (document.visibilityState === "visible") {
       this.appShell.repairViewportPosition();
       void this.sessions.refreshSelectedSession();
-      void this.refreshPiWebStatus();
+      this.schedulePiWebStatusRefresh();
       void this.refreshMachineActivities();
       void this.refreshWorkspaceDeletionRuns();
     }
@@ -213,12 +215,11 @@ export class PiWebApp extends LitElement {
     this.systemLightThemeMedia?.addEventListener("change", this.onSystemLightThemeChange);
     this.applyPreferredTheme(false);
     this.connectRealtime();
-    this.piWebStatusTimer = window.setInterval(() => { void this.refreshPiWebStatus(); }, PI_WEB_STATUS_REFRESH_MS);
-    void this.refreshPiWebStatus();
+    this.piWebStatusTimer = window.setInterval(() => { this.schedulePiWebStatusRefresh(); }, PI_WEB_STATUS_REFRESH_MS);
     void this.refreshWorkspaceActivity();
     void this.loadClientConfig();
     void this.ensureGatewayPluginsLoaded();
-    void this.loadProjectsAndRestoreRoute();
+    void this.loadProjectsAndRestoreRoute().finally(() => { this.schedulePiWebStatusRefresh(); });
   }
 
   override disconnectedCallback(): void {
@@ -236,6 +237,7 @@ export class PiWebApp extends LitElement {
     this.git.dispose();
     if (this.piWebStatusTimer !== undefined) window.clearInterval(this.piWebStatusTimer);
     this.piWebStatusTimer = undefined;
+    this.clearScheduledPiWebStatusRefresh();
     if (this.workspaceDeletionPollTimer !== undefined) window.clearInterval(this.workspaceDeletionPollTimer);
     this.workspaceDeletionPollTimer = undefined;
     super.disconnectedCallback();
@@ -263,6 +265,20 @@ export class PiWebApp extends LitElement {
     await this.withChatScrollTransition(() => this.restoreRouteFor(effectiveRoute, false));
     this.rememberCurrentMachineNavigation();
     await this.refreshWorkspaceDeletionRuns();
+  }
+
+  private schedulePiWebStatusRefresh(delayMs = PI_WEB_STATUS_DEFER_MS): void {
+    this.clearScheduledPiWebStatusRefresh();
+    this.piWebStatusDeferredTimer = window.setTimeout(() => {
+      this.piWebStatusDeferredTimer = undefined;
+      void this.refreshPiWebStatus();
+    }, delayMs);
+  }
+
+  private clearScheduledPiWebStatusRefresh(): void {
+    if (this.piWebStatusDeferredTimer === undefined) return;
+    window.clearTimeout(this.piWebStatusDeferredTimer);
+    this.piWebStatusDeferredTimer = undefined;
   }
 
   private async refreshPiWebStatus(): Promise<void> {
@@ -311,12 +327,12 @@ export class PiWebApp extends LitElement {
     try {
       await Promise.all([
         this.sessions.refreshSelectedSession(),
-        this.refreshPiWebStatus(),
         this.refreshMachineActivities(),
         this.loadClientConfig(),
         this.refreshWorkspaceDeletionRuns(),
         this.refreshCurrentWorkspaceSurface(),
       ]);
+      this.schedulePiWebStatusRefresh();
     } finally {
       this.isRefreshingApp = false;
     }
@@ -340,6 +356,7 @@ export class PiWebApp extends LitElement {
   }
 
   private async restoreRouteFor(route: AppRoute, updateUrl: boolean, surface = this.readWorkspaceRouteSurface(route), restoredMainView?: AppState["mainView"]) {
+    const machineBeforeRestore = selectedMachineId(this.state);
     const routeSurface = route.projectId === undefined || route.projectId === "" ? emptyWorkspaceRouteSurface() : surface;
     const restoreSeq = ++this.routeRestoreSeq;
     this.routeRestoreDepth += 1;
@@ -383,6 +400,7 @@ export class PiWebApp extends LitElement {
     } finally {
       this.routeRestoreDepth = Math.max(0, this.routeRestoreDepth - 1);
       if (this.routeRestoreDepth === 0) this.restoringRouteTerminalId = undefined;
+      if (selectedMachineId(this.state) !== machineBeforeRestore) this.schedulePiWebStatusRefresh();
     }
   }
 
@@ -728,7 +746,6 @@ export class PiWebApp extends LitElement {
     this.activeTerminalIds.clear();
     this.setState({ piWebStatus: undefined });
     this.git.updatePolling();
-    void this.refreshPiWebStatus();
     void this.loadPluginsForSelectedMachine();
   }
 
@@ -1360,7 +1377,10 @@ export class PiWebApp extends LitElement {
 
   private async submitMachineDialog(input: MachineDialogSubmit): Promise<void> {
     const machine = await this.machines.addMachine(input);
-    if (machine !== undefined) this.setState({ machineDialogOpen: false });
+    if (machine !== undefined) {
+      this.setState({ machineDialogOpen: false });
+      this.schedulePiWebStatusRefresh();
+    }
   }
 
   private async removeMachine(machine: Machine | undefined = this.state.selectedMachine): Promise<void> {

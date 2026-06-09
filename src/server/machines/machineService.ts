@@ -1,6 +1,6 @@
-import type { Machine, MachineHealth, MachineRuntime, PiWebComponentStatus, PiWebRuntimeResponse, PiWebStatusResponse } from "../../shared/apiTypes.js";
+import type { Machine, MachineHealth, MachineRuntime, PiWebComponentStatus, PiWebRuntimeComponent, PiWebRuntimeResponse, PiWebStatusResponse } from "../../shared/apiTypes.js";
 import { isPiWebCapability } from "../../shared/capabilities.js";
-import { getPiWebRuntime, getPiWebStatus } from "../piWebStatus.js";
+import { getPiWebRuntime } from "../piWebStatus.js";
 import { DEFAULT_REMOTE_HEALTH_TIMEOUT_MS, RemoteMachineClient, type MachineClient, validateConfiguredMachineHeaders } from "./machineClient.js";
 import { MachineStore, type StoredMachine } from "./machineStore.js";
 
@@ -14,7 +14,6 @@ export interface CreateMachineInput {
 export type UpdateMachineInput = Partial<CreateMachineInput>;
 
 export interface MachineServiceDependencies {
-  localStatus?: () => Promise<PiWebStatusResponse>;
   localRuntime?: () => Promise<PiWebRuntimeResponse>;
   remoteClientFactory?: (machine: StoredMachine) => MachineClient;
   now?: () => Date;
@@ -108,8 +107,15 @@ export class MachineService {
   private async localHealth(): Promise<MachineHealth> {
     const checkedAt = this.now().toISOString();
     try {
-      const status = await (this.deps.localStatus ?? getPiWebStatus)();
-      return { machineId: "local", ok: true, checkedAt, status: "online", web: status.components.web, sessiond: status.components.sessiond };
+      const runtime = await (this.deps.localRuntime ?? getPiWebRuntime)();
+      return {
+        machineId: "local",
+        ok: true,
+        checkedAt,
+        status: "online",
+        web: componentStatusFromRuntime(runtime.components.web),
+        sessiond: componentStatusFromRuntime(runtime.components.sessiond),
+      };
     } catch (error) {
       return { machineId: "local", ok: false, checkedAt, status: "error", error: errorMessage(error) };
     }
@@ -203,6 +209,17 @@ function validateHeaders(value: Record<string, string>): Record<string, string> 
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function componentStatusFromRuntime(runtime: PiWebRuntimeComponent): PiWebComponentStatus {
+  return {
+    component: runtime.component,
+    label: runtime.label,
+    ...(runtime.runtimeVersion === undefined ? {} : { runtimeVersion: runtime.runtimeVersion }),
+    stale: false,
+    available: runtime.available,
+    ...(runtime.error === undefined ? {} : { error: runtime.error }),
+  };
 }
 
 function machineRuntime(machineId: string, checkedAt: string, runtime: PiWebRuntimeResponse): MachineRuntime {
