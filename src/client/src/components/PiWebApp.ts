@@ -855,8 +855,6 @@ export class PiWebApp extends LitElement {
 
   private archivedDeleteUnavailableMessage(): string {
     const machineName = this.state.selectedMachine?.name ?? "this machine";
-    const runtime = this.selectedMachineRuntime();
-    if (runtime?.ok === false && runtime.error !== undefined) return `Update and restart Pi-Web on ${machineName} to delete archived sessions. Runtime check failed: ${runtime.error}`;
     return `Update and restart Pi-Web on ${machineName} to delete archived sessions.`;
   }
 
