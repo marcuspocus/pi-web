@@ -379,6 +379,19 @@ export class SessionController {
     }
   }
 
+  async reloadSession(session = this.getState().selectedSession) {
+    if (session === undefined) return;
+    try {
+      await this.api.reloadSession(session.id, selectedMachineId(this.getState()));
+      this.transcripts.discard(this.sessionCacheKey(session.id));
+      if (this.getState().selectedSession?.id === session.id) {
+        await this.selectSession(session, { updateUrl: false });
+      }
+    } catch (error) {
+      this.setState({ error: String(error) });
+    }
+  }
+
   async detachParent(session = this.getState().selectedSession) {
     if (session?.parentSessionPath === undefined) return;
     try {

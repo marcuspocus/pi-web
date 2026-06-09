@@ -61,6 +61,7 @@ export class AppNavigationPanel extends LitElement {
   @property({ attribute: false }) onDeleteArchivedSession?: (session: SessionInfo) => void | Promise<void>;
   @property({ attribute: false }) onDeleteArchivedSessions?: (sessions: SessionInfo[]) => void | Promise<void>;
   @property({ attribute: false }) onDetachParentSession?: (session: SessionInfo) => void | Promise<void>;
+  @property({ attribute: false }) onReloadSession?: (session: SessionInfo) => void | Promise<void>;
   @property({ attribute: false }) onArchivedCollapsed?: () => void | Promise<void>;
   @property({ attribute: false }) onSelectMachine?: (machine: Machine) => void | Promise<void>;
   @property({ attribute: false }) onRemoveMachine?: (machine: Machine) => void | Promise<void>;
@@ -171,6 +172,7 @@ export class AppNavigationPanel extends LitElement {
         .onDeleteArchived=${(session: SessionInfo) => this.onDeleteArchivedSession?.(session)}
         .onDeleteArchivedMany=${(sessions: SessionInfo[]) => this.onDeleteArchivedSessions?.(sessions)}
         .onDetachParent=${(session: SessionInfo) => this.onDetachParentSession?.(session)}
+        .onReload=${(session: SessionInfo) => this.onReloadSession?.(session)}
         .onFocusPreviousSection=${() => { this.focusPreviousFrom("sessions"); }}
         .onFocusNextSection=${() => { this.focusNextFrom("sessions"); }}
         .onCancelKeyboardNavigation=${() => { this.cancelKeyboardNavigation(); }}

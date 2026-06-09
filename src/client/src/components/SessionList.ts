@@ -49,6 +49,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
   @property({ attribute: false }) onDeleteArchived?: (session: SessionInfo) => void | Promise<void>;
   @property({ attribute: false }) onDeleteArchivedMany?: (sessions: SessionInfo[]) => void | Promise<void>;
   @property({ attribute: false }) onDetachParent?: (session: SessionInfo) => void;
+  @property({ attribute: false }) onReload?: (session: SessionInfo) => void;
 
   @state() private openMenuSessionId: string | undefined;
   @state() private menuStyle = "";
@@ -226,6 +227,7 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
                     <button class="danger" title=${this.canDeleteArchived ? "Permanently delete archived session" : this.archivedDeleteUnavailableMessage} ?disabled=${!this.canDeleteArchived} @click=${() => { this.openMenuSessionId = undefined; this.confirmDeleteArchived(session); }}>Delete archived session</button>
                   `
                   : html`
+                    <button title="Reload session from disk" @click=${() => { this.openMenuSessionId = undefined; this.onReload?.(session); }}>Reload</button>
                     ${session.parentSessionPath !== undefined ? html`<button title="Detach from parent" @click=${() => { this.openMenuSessionId = undefined; this.onDetachParent?.(session); }}>Detach from parent</button>` : null}
                     <button title="Archive session" @click=${() => { this.openMenuSessionId = undefined; this.onArchive?.(session); }}>Archive</button>
                     ${descendantCount > 0 ? html`<button title="Archive this session and its descendants" @click=${() => { this.openMenuSessionId = undefined; this.confirmArchiveWithDescendants(session, descendantCount); }}>Archive with descendants (${descendantCount})</button>` : null}
