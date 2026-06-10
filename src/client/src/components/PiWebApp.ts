@@ -65,6 +65,7 @@ import { appStyles } from "./shared";
 
 const PI_WEB_STATUS_REFRESH_MS = 15 * 60 * 1000;
 const PI_WEB_STATUS_DEFER_MS = 750;
+const REMOTE_ROUTE_RESTORE_RETRY_DELAYS_MS = [1_000, 3_000, 8_000, 15_000, 30_000] as const;
 const GLOBAL_SHORTCUT_LISTENER_OPTIONS = { capture: true } as const;
 const THEME_AUTO_ON_VALUE = "auto:on";
 const THEME_AUTO_OFF_VALUE = "auto:off";
@@ -154,6 +155,10 @@ export class PiWebApp extends LitElement {
   private routeRestoreSeq = 0;
   private routeRestoreDepth = 0;
   private restoringRouteTerminalId: string | undefined;
+  private pendingRemoteRouteRestore: AppRoute | undefined;
+  private remoteRouteRestoreTimer: number | undefined;
+  private remoteRouteRestoreAttempt = 0;
+  private remoteRouteRestoreInProgress = false;
   private readonly plugins = createPluginRegistry();
   private readonly loadedMachinePluginIds = new Set<string>();
   private readonly machinePluginLoadPromises = new Map<string, Promise<void>>();
@@ -169,6 +174,7 @@ export class PiWebApp extends LitElement {
   });
   private readonly onPageShow = () => {
     this.appShell.repairViewportPosition();
+    this.retryPendingRemoteRouteRestoreSoon();
   };
   private readonly onFocus = () => {
     this.appShell.repairViewportPosition();
@@ -176,6 +182,7 @@ export class PiWebApp extends LitElement {
     this.schedulePiWebStatusRefresh();
     void this.refreshMachineActivities();
     void this.refreshWorkspaceDeletionRuns();
+    this.retryPendingRemoteRouteRestoreSoon();
   };
   private readonly onVisibilityChange = () => {
     if (document.visibilityState === "visible") {
@@ -184,6 +191,7 @@ export class PiWebApp extends LitElement {
       this.schedulePiWebStatusRefresh();
       void this.refreshMachineActivities();
       void this.refreshWorkspaceDeletionRuns();
+      this.retryPendingRemoteRouteRestoreSoon();
     }
   };
   private readonly onSystemLightThemeChange = () => {
@@ -240,6 +248,7 @@ export class PiWebApp extends LitElement {
     this.clearScheduledPiWebStatusRefresh();
     if (this.workspaceDeletionPollTimer !== undefined) window.clearInterval(this.workspaceDeletionPollTimer);
     this.workspaceDeletionPollTimer = undefined;
+    this.clearPendingRemoteRouteRestore();
     super.disconnectedCallback();
   }
 
@@ -257,13 +266,16 @@ export class PiWebApp extends LitElement {
     this.restoreSettingsRoute();
     const route = readRoute();
     await this.machines.loadMachines(route.machineId);
-    const machineFallbackMessage = this.state.error;
     const effectiveRoute = this.routeForSelectedMachine(route);
+    const initialRouteMachineHealth = this.state.machineStatuses[effectiveRoute.machineId ?? "local"];
     if (effectiveRoute !== route) this.replaceRouteAndClearWorkspaceQuery(effectiveRoute);
     await this.projects.loadProjects();
-    if (machineFallbackMessage !== "" && this.state.error === "") this.setState({ error: machineFallbackMessage });
     await this.withChatScrollTransition(() => this.restoreRouteFor(effectiveRoute, false));
-    this.rememberCurrentMachineNavigation();
+    if (this.shouldDeferRemoteRouteRestore(effectiveRoute, initialRouteMachineHealth)) this.deferRemoteRouteRestore(effectiveRoute);
+    else {
+      this.clearPendingRemoteRouteRestore();
+      this.rememberCurrentMachineNavigation();
+    }
     await this.refreshWorkspaceDeletionRuns();
   }
 
@@ -428,6 +440,116 @@ export class PiWebApp extends LitElement {
     setNamespacedQueryKey(FILES_ROUTE_NAMESPACE, "file", undefined, { replace: true });
     setNamespacedQueryKey(GIT_ROUTE_NAMESPACE, "diff", undefined, { replace: true });
     setNamespacedQueryKey(TERMINAL_ROUTE_NAMESPACE, "terminal", undefined, { replace: true });
+  }
+
+  private shouldDeferRemoteRouteRestore(route: AppRoute, routeMachineHealth = this.state.machineStatuses[route.machineId ?? "local"]): boolean {
+    const machineId = route.machineId ?? "local";
+    const machine = this.state.selectedMachine;
+    if (machineId === "local" || machine?.id !== machineId || machine.kind !== "remote") return false;
+    if (routeMachineHealth?.ok !== false) return false;
+    if (route.projectId === undefined || route.projectId === "") return this.state.projects.length === 0;
+    return this.state.selectedProject?.id !== route.projectId;
+  }
+
+  private deferRemoteRouteRestore(route: AppRoute): void {
+    this.pendingRemoteRouteRestore = route;
+    this.remoteRouteRestoreAttempt = 0;
+    this.setRemoteRouteRestoreMessage(route);
+    this.schedulePendingRemoteRouteRestore();
+  }
+
+  private retryPendingRemoteRouteRestoreSoon(): void {
+    if (this.pendingRemoteRouteRestore === undefined) return;
+    this.schedulePendingRemoteRouteRestore(0);
+  }
+
+  private schedulePendingRemoteRouteRestore(delayMs = remoteRouteRestoreRetryDelay(this.remoteRouteRestoreAttempt)): void {
+    if (this.pendingRemoteRouteRestore === undefined) return;
+    this.clearPendingRemoteRouteRestoreTimer();
+    this.remoteRouteRestoreTimer = window.setTimeout(() => {
+      this.remoteRouteRestoreTimer = undefined;
+      void this.retryPendingRemoteRouteRestore();
+    }, delayMs);
+  }
+
+  private async retryPendingRemoteRouteRestore(): Promise<void> {
+    if (this.remoteRouteRestoreInProgress) return;
+    const route = this.pendingRemoteRouteRestore;
+    if (route === undefined) return;
+    if (!this.pendingRemoteRouteRestoreStillCurrent(route)) {
+      this.clearPendingRemoteRouteRestore();
+      return;
+    }
+
+    this.remoteRouteRestoreInProgress = true;
+    try {
+      const machineId = route.machineId ?? "local";
+      const health = await this.machines.refreshMachineHealth(machineId);
+      if (!this.pendingRemoteRouteRestoreStillCurrent(route)) return;
+      if (health?.ok !== true) {
+        this.scheduleNextRemoteRouteRestoreAttempt(route);
+        return;
+      }
+
+      await this.machines.refreshMachineRuntime(machineId);
+      if (!this.pendingRemoteRouteRestoreStillCurrent(route)) return;
+      await this.projects.loadProjects();
+      if (!this.pendingRemoteRouteRestoreStillCurrent(route)) return;
+      if (this.state.error !== "") {
+        this.scheduleNextRemoteRouteRestoreAttempt(route);
+        return;
+      }
+
+      await this.withChatScrollTransition(() => this.restoreRouteFor(route, false));
+      if (!this.pendingRemoteRouteRestoreStillCurrent(route)) return;
+      this.clearPendingRemoteRouteRestore();
+      this.rememberCurrentMachineNavigation();
+      await this.refreshWorkspaceDeletionRuns();
+    } finally {
+      this.remoteRouteRestoreInProgress = false;
+    }
+  }
+
+  private scheduleNextRemoteRouteRestoreAttempt(route: AppRoute): void {
+    this.remoteRouteRestoreAttempt += 1;
+    if (this.remoteRouteRestoreAttempt >= REMOTE_ROUTE_RESTORE_RETRY_DELAYS_MS.length) {
+      this.setRemoteRouteRestoreMessage(route, { exhausted: true });
+      this.clearPendingRemoteRouteRestore();
+      return;
+    }
+    this.setRemoteRouteRestoreMessage(route);
+    this.schedulePendingRemoteRouteRestore();
+  }
+
+  private setRemoteRouteRestoreMessage(route: AppRoute, options: { exhausted?: boolean } = {}): void {
+    const machineId = route.machineId ?? "local";
+    const machineName = this.state.machines.find((machine) => machine.id === machineId)?.name ?? this.state.selectedMachine?.name ?? "Remote machine";
+    const health = this.state.machineStatuses[machineId];
+    const detail = health?.error ?? (this.state.error === "" ? undefined : this.state.error);
+    const prefix = options.exhausted === true
+      ? `${machineName} is still unavailable.`
+      : `${machineName} is unavailable; reconnecting…`;
+    this.setState({ error: `${prefix}${detail === undefined ? "" : ` ${detail}`}` });
+  }
+
+  private pendingRemoteRouteRestoreStillCurrent(route: AppRoute): boolean {
+    const machineId = route.machineId ?? "local";
+    return machineId !== "local"
+      && this.pendingRemoteRouteRestore === route
+      && this.state.selectedMachine?.id === machineId
+      && this.state.machines.some((machine) => machine.id === machineId);
+  }
+
+  private clearPendingRemoteRouteRestore(): void {
+    this.clearPendingRemoteRouteRestoreTimer();
+    this.pendingRemoteRouteRestore = undefined;
+    this.remoteRouteRestoreAttempt = 0;
+  }
+
+  private clearPendingRemoteRouteRestoreTimer(): void {
+    if (this.remoteRouteRestoreTimer === undefined) return;
+    window.clearTimeout(this.remoteRouteRestoreTimer);
+    this.remoteRouteRestoreTimer = undefined;
   }
 
   private async restoreRouteMachine(route: AppRoute, updateUrl: boolean): Promise<void> {
@@ -740,6 +862,8 @@ export class PiWebApp extends LitElement {
 
   private handleMachineChange(previous: AppState, next: AppState): void {
     if ((previous.selectedMachine?.id ?? "local") === (next.selectedMachine?.id ?? "local")) return;
+    const pendingMachineId = this.pendingRemoteRouteRestore?.machineId ?? "local";
+    if (pendingMachineId !== (next.selectedMachine?.id ?? "local")) this.clearPendingRemoteRouteRestore();
     this.sessions.clearActiveSession();
     this.realtime.close();
     this.connectRealtime();
@@ -1673,6 +1797,11 @@ function emptyWorkspaceRouteSurface(): WorkspaceRouteSurface {
 
 function machineScopedKey(machineId: string, value: string): string {
   return JSON.stringify([machineId, value]);
+}
+
+function remoteRouteRestoreRetryDelay(attempt: number): number {
+  const index = Math.min(attempt, REMOTE_ROUTE_RESTORE_RETRY_DELAYS_MS.length - 1);
+  return REMOTE_ROUTE_RESTORE_RETRY_DELAYS_MS[index] ?? 30_000;
 }
 
 function errorMessage(error: unknown): string {
