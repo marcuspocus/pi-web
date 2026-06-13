@@ -197,6 +197,3 @@ export function examplePiWebConfig(config: PiWebConfig = {}): string {
   return `${JSON.stringify({ host: config.host ?? "127.0.0.1", port: config.port ?? 8504, allowedHosts: config.allowedHosts ?? [] }, null, 2)}\n`;
 }
 
-export function piWebConfigDir(env: NodeJS.ProcessEnv = process.env): string {
-  return dirname(defaultPiWebConfigPath(env));
-}

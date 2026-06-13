@@ -52,13 +52,9 @@ export interface WorkspaceFiles {
   readFile(path: string): Promise<FileContentResponse>;
 }
 
-export type WorkspacePanelFiles = WorkspaceFiles;
-
 export interface WorkspaceHost {
   requestRender(): void;
 }
-
-export type WorkspacePanelHost = WorkspaceHost;
 
 export interface WorkspaceContext {
   machine: PluginMachine;
