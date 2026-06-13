@@ -4,7 +4,7 @@ import type { SessionActivity, SessionInfo, SessionStatus } from "../api";
 import { isCachedNewSessionInfo } from "../cachedNewSessions";
 import { isSessionActive } from "../../../shared/activity";
 import { actionMenuPanelStyle } from "./actionMenu";
-import { renderActionActivityIndicator } from "./activityBadge";
+import { renderActionActivityIndicator, type ActivityIndicatorKind } from "./activityBadge";
 import type { KeyboardNavigableSection } from "./navigationFocus";
 import { activateSelectableRow, focusSelectedOrFirstSelectableRow, handleSelectableRowKeyboard } from "./selectableRow";
 import { listStyles } from "./shared";
@@ -361,9 +361,8 @@ export class SessionList extends LitElement implements KeyboardNavigableSection 
   }
 
   private renderActivity(session: SessionInfo) {
-    if (isCachedNewSessionInfo(session) || session.archived === true) return undefined;
-    const active = this.sending[session.id] === true || isSessionActive(this.statuses[session.id], this.activities[session.id]);
-    return renderActionActivityIndicator(active ? "session" : undefined, "Session active");
+    const kind = sessionRowActivityKind(session, this.statuses[session.id], this.activities[session.id], this.sending[session.id] === true);
+    return renderActionActivityIndicator(kind, kind === "sending" ? "Sending message" : "Session active");
   }
 
   static override styles = [listStyles, css`
@@ -415,6 +414,25 @@ function unarchivedDescendantCounts(sessions: SessionInfo[]): Map<string, number
   };
 
   return new Map(sessions.map((session) => [session.id, countFor(session, new Set())]));
+}
+
+/**
+ * Resolve the activity indicator kind for a session row, or undefined when the
+ * row should show no indicator. Pure so it can be unit-tested without rendering.
+ *
+ * "sending" (client-side upload in flight) is reported with its own kind, and
+ * takes precedence over server activity, so it can be colored distinctly to
+ * signal that it is not yet propagated to workspace/machine activity.
+ */
+export function sessionRowActivityKind(
+  session: SessionInfo,
+  status: SessionStatus | undefined,
+  activity: SessionActivity | undefined,
+  sending: boolean,
+): ActivityIndicatorKind | undefined {
+  if (isCachedNewSessionInfo(session) || session.archived === true) return undefined;
+  if (sending) return "sending";
+  return isSessionActive(status, activity) ? "session" : undefined;
 }
 
 export function sessionRowsForCurrentTree(sessions: SessionInfo[]): SessionRow[] {
