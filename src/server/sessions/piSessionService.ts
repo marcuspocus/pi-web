@@ -378,10 +378,15 @@ export class PiSessionService {
     return session.getAvailableThinkingLevels();
   }
 
-  async setThinkingLevel(ref: PiSessionLookup, level: ClientThinkingLevel): Promise<ClientSessionStatus> {
+  async setThinkingLevel(ref: PiSessionLookup, level: string): Promise<ClientSessionStatus> {
     await this.assertWritable(ref);
     const session = await this.getOrOpen(ref);
-    session.setThinkingLevel(level);
+    // pi owns the valid set; validate against the session's live levels rather
+    // than a hardcoded union so this stays correct if pi changes the set.
+    const available = session.getAvailableThinkingLevels();
+    const match = available.find((candidate) => candidate === level);
+    if (match === undefined) throw new Error(`Invalid thinking level: ${level}`);
+    session.setThinkingLevel(match);
     this.publishActivity(session, `thinking: ${session.thinkingLevel}`, "idle");
     this.publishStatus(session);
     return this.statusFromSession(session);

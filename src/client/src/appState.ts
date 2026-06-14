@@ -26,6 +26,8 @@ export interface AppState {
   selectedSession: SessionInfo | undefined;
   status: SessionStatus | undefined;
   activity: SessionActivity | undefined;
+  /** Thinking levels available for the selected session's current model. */
+  availableThinkingLevels: readonly string[];
   sessionStatuses: Record<string, SessionStatus>;
   sessionActivities: Record<string, SessionActivity>;
   workspaceActivities: Record<string, WorkspaceActivity>;
@@ -123,6 +125,7 @@ export function initialAppState(): AppState {
     selectedSession: undefined,
     status: undefined,
     activity: undefined,
+    availableThinkingLevels: [],
     sessionStatuses: {},
     sessionActivities: {},
     workspaceActivities: {},

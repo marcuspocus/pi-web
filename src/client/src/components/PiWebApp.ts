@@ -1,6 +1,6 @@
 import { LitElement, html } from "lit";
 import { customElement, query, state } from "lit/decorators.js";
-import { configApi, piWebApi, terminalsApi, workspacesApi, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type RealtimeEvent, type SessionInfo, type TerminalCommandRun, type TerminalUiEvent, type ThinkingLevel, type Workspace } from "../api";
+import { configApi, piWebApi, terminalsApi, workspacesApi, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type RealtimeEvent, type SessionInfo, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
 import type { AppAction } from "../actions";
 import { initialAppState, type AppState } from "../appState";
 import { isSessionActive } from "../../../shared/activity";
@@ -1655,14 +1655,14 @@ export class PiWebApp extends LitElement {
       thinkingDialog: {
         title: "Select Thinking Level",
         selectedValue: current,
-        options: levels.map((level) => ({ value: level, label: `${level}${level === current ? " ✓ current" : ""}`, description: thinkingDescription(level) })),
+        options: levels.map((level) => { const description = thinkingDescription(level); return { value: level, label: `${level}${level === current ? " ✓ current" : ""}`, ...(description === undefined ? {} : { description }) }; }),
       },
     });
   }
 
   private async pickThinking(value: string) {
     this.setState({ thinkingDialog: undefined });
-    if (isThinkingLevel(value)) await this.sessions.setThinkingLevel(value);
+    if (value !== "") await this.sessions.setThinkingLevel(value);
   }
 
   private sendPrompt(text: string, streamingBehavior?: "steer" | "followUp", attachments?: import("../api").PromptAttachment[], delivery?: import("../../../shared/apiTypes").PromptAttachmentDelivery): void {
@@ -1730,7 +1730,7 @@ export class PiWebApp extends LitElement {
           <div class="mobile-navigation-panel">${this.appShell.isMobileNavigationLayout ? this.renderNavigationPanel() : null}</div>
           ${state.selectedSession ? html`
             <chat-view .sessionId=${state.selectedSession.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .loadingMore=${state.isLoadingEarlierMessages} .isReceivingPartialStream=${state.isReceivingPartialStream} .isSendingPrompt=${state.sendingPrompts[state.selectedSession.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .status=${state.status} .activity=${state.activity} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())}></chat-view>
-            <prompt-editor .sessionId=${state.selectedSession.id} .cwd=${state.selectedWorkspace?.path} .machineId=${selectedMachineId(state)} .disabled=${state.selectedSession.archived === true} .canSteer=${state.status?.isStreaming === true} .isCompacting=${state.status?.isCompacting === true} .canStop=${state.status?.isStreaming === true || state.status?.isBashRunning === true || state.status?.isCompacting === true || (state.status?.pendingMessageCount ?? 0) > 0} .status=${state.status} .sending=${state.sendingPrompts[state.selectedSession.id] === true} .onSend=${(text: string, streamingBehavior?: "steer" | "followUp", attachments?: import("../api").PromptAttachment[], delivery?: import("../../../shared/apiTypes").PromptAttachmentDelivery) => { this.sendPrompt(text, streamingBehavior, attachments, delivery); }} .onStop=${() => this.sessions.stopActiveWork()} .onSelectModel=${() => { void this.openModelDialog(); }} .onSelectThinking=${() => { void this.openThinkingDialog(); }}></prompt-editor>
+            <prompt-editor .sessionId=${state.selectedSession.id} .cwd=${state.selectedWorkspace?.path} .machineId=${selectedMachineId(state)} .disabled=${state.selectedSession.archived === true} .canSteer=${state.status?.isStreaming === true} .isCompacting=${state.status?.isCompacting === true} .canStop=${state.status?.isStreaming === true || state.status?.isBashRunning === true || state.status?.isCompacting === true || (state.status?.pendingMessageCount ?? 0) > 0} .status=${state.status} .availableThinkingLevels=${state.availableThinkingLevels} .sending=${state.sendingPrompts[state.selectedSession.id] === true} .onSend=${(text: string, streamingBehavior?: "steer" | "followUp", attachments?: import("../api").PromptAttachment[], delivery?: import("../../../shared/apiTypes").PromptAttachmentDelivery) => { this.sendPrompt(text, streamingBehavior, attachments, delivery); }} .onStop=${() => this.sessions.stopActiveWork()} .onSelectModel=${() => { void this.openModelDialog(); }} .onSelectThinking=${() => { void this.openThinkingDialog(); }}></prompt-editor>
             <status-bar .status=${state.status}></status-bar>
             ${state.commandDialog !== undefined ? html`<command-picker .title=${state.commandDialog.title} .options=${state.commandDialog.options} .onPick=${(value: string) => this.sessions.respondToCommand(state.commandDialog?.requestId ?? "", value)} .onCancel=${() => { this.sessions.cancelCommand(); }}></command-picker>` : null}
             ${state.modelDialog !== undefined ? html`<command-picker title=${state.modelDialog.title} .searchable=${true} .options=${state.modelDialog.options} .selectedValue=${state.modelDialog.selectedValue} .onPick=${(value: string) => { void this.pickModel(value); }} .onCancel=${() => { this.setState({ modelDialog: undefined }); }}></command-picker>` : null}
@@ -1818,11 +1818,7 @@ function nextFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => { resolve(); }));
 }
 
-function isThinkingLevel(value: string): value is ThinkingLevel {
-  return value === "off" || value === "minimal" || value === "low" || value === "medium" || value === "high" || value === "xhigh";
-}
-
-function thinkingDescription(level: ThinkingLevel): string {
+function thinkingDescription(level: string): string | undefined {
   switch (level) {
     case "off": return "No reasoning";
     case "minimal": return "Very brief reasoning (~1k tokens)";
@@ -1830,5 +1826,6 @@ function thinkingDescription(level: ThinkingLevel): string {
     case "medium": return "Moderate reasoning (~8k tokens)";
     case "high": return "Deep reasoning (~16k tokens)";
     case "xhigh": return "Maximum reasoning (~32k tokens)";
+    default: return undefined; // unknown level from a newer pi: no description
   }
 }

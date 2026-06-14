@@ -1,4 +1,4 @@
-import { api as defaultApi, type CommandResult, type PromptAttachment, type SessionActivity, type SessionInfo, type SessionRef, type SessionStatus, type ThinkingLevel } from "../api";
+import { api as defaultApi, type CommandResult, type PromptAttachment, type SessionActivity, type SessionInfo, type SessionRef, type SessionStatus } from "../api";
 import type { AppState } from "../appState";
 import { forgetCachedNewSession, isCachedNewSessionInfo, markCachedNewSessionInfo, rememberCachedNewSession, stripCachedNewSessionMarker } from "../cachedNewSessions";
 import { textMessage } from "../chatMessages";
@@ -68,7 +68,7 @@ export class SessionController {
     // session must not cancel the in-flight upload indicator of the session
     // that is still sending; the per-session entry is cleared by send()'s
     // finally block when the request settles.
-    this.setState({ selectedSession: undefined, messages: [], messagePageStart: 0, messagePageEnd: 0, messagePageTotal: 0, isLoadingEarlierMessages: false, isReceivingPartialStream: false, status: undefined, activity: undefined });
+    this.setState({ selectedSession: undefined, messages: [], messagePageStart: 0, messagePageEnd: 0, messagePageTotal: 0, isLoadingEarlierMessages: false, isReceivingPartialStream: false, status: undefined, activity: undefined, availableThinkingLevels: [] });
   }
 
   deselectSession(options?: { forgetRememberedSelection?: boolean | undefined; updateUrl?: boolean | undefined }) {
@@ -141,8 +141,9 @@ export class SessionController {
       const history = this.transcripts.mergeHistory(transcriptKey, page);
       const isReceivingPartialStream = status.isStreaming;
       this.catchupStreamSessionId = isReceivingPartialStream ? session.id : undefined;
-      this.setState({ ...history, isLoadingEarlierMessages: false, isReceivingPartialStream, status, activity: this.getState().sessionActivities[session.id] });
+      this.setState({ ...history, isLoadingEarlierMessages: false, isReceivingPartialStream, status, activity: this.getState().sessionActivities[session.id], availableThinkingLevels: [] });
       this.applyStatus(status);
+      void this.refreshAvailableThinkingLevels();
       for (const event of buffered) this.applyEvent(event);
       this.socket.setHandler((event) => { this.applyEvent(event); });
       if (options?.updateUrl !== false) this.updateUrl();
@@ -406,6 +407,7 @@ export class SessionController {
     if (!session || session.archived === true) return;
     try {
       this.applyStatus(await this.api.setModel(session, provider, modelId, selectedMachineId(this.getState())));
+      await this.refreshAvailableThinkingLevels();
     } catch (error) {
       this.setState({ error: String(error) });
     }
@@ -416,6 +418,7 @@ export class SessionController {
     if (!session || session.archived === true) return;
     try {
       this.applyStatus(await this.api.cycleModel(session, direction, selectedMachineId(this.getState())));
+      await this.refreshAvailableThinkingLevels();
     } catch (error) {
       this.setState({ error: String(error) });
     }
@@ -432,7 +435,19 @@ export class SessionController {
     }
   }
 
-  async setThinkingLevel(level: ThinkingLevel) {
+  /** Refresh the available thinking levels for the selected session's model. */
+  async refreshAvailableThinkingLevels() {
+    const session = this.getState().selectedSession;
+    if (!session || session.archived === true) {
+      if (this.getState().availableThinkingLevels.length > 0) this.setState({ availableThinkingLevels: [] });
+      return;
+    }
+    const levels = await this.listThinkingLevels();
+    if (this.getState().selectedSession?.id !== session.id) return;
+    this.setState({ availableThinkingLevels: levels });
+  }
+
+  async setThinkingLevel(level: string) {
     const session = this.getState().selectedSession;
     if (!session || session.archived === true) return;
     try {

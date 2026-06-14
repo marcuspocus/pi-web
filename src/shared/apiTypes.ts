@@ -183,7 +183,10 @@ export interface SessionModel {
   reasoning?: unknown;
 }
 
-export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+// Domain type is owned by pi and re-exported from the shared thinking-levels
+// module. Wire/data fields below intentionally use `string` so an unknown level
+// from a newer pi runtime parses and renders gracefully instead of failing.
+export type { ThinkingLevel } from "./thinkingLevels.js";
 
 export type AuthType = "oauth" | "api_key";
 export type AuthStatusSource = "stored" | "runtime" | "environment" | "fallback" | "models_json_key" | "models_json_command";
@@ -222,7 +225,7 @@ export interface ModelSelectionResponse {
 }
 
 export interface ThinkingLevelsResponse {
-  levels: ThinkingLevel[];
+  levels: string[];
 }
 
 export interface SessionStatus {

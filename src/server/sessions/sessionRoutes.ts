@@ -102,6 +102,8 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: PiSessionS
   app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown; level?: unknown } | undefined }>(`${prefix}/sessions/:sessionId/thinking-level`, async (request, reply) => {
     try {
       const body = optionalRecord(request.body);
+      // The level string is validated against the session's live available levels
+      // in the service, so it stays correct if pi changes the set.
       return await sessions.setThinkingLevel(sessionLookupFromBody(request.params.sessionId, body), requireThinkingLevel(body["level"]));
     } catch (error) {
       return reply.code(mutationErrorStatus(error)).send({ error: errorMessage(error) });
@@ -285,9 +287,9 @@ function requireString(record: Record<string, unknown>, field: string): string {
   return value;
 }
 
-function requireThinkingLevel(value: unknown): "off" | "minimal" | "low" | "medium" | "high" | "xhigh" {
-  if (value === "off" || value === "minimal" || value === "low" || value === "medium" || value === "high" || value === "xhigh") return value;
-  throw new Error("level field is invalid");
+function requireThinkingLevel(value: unknown): string {
+  if (typeof value !== "string" || value === "") throw new Error("level field is invalid");
+  return value;
 }
 
 function optionalField<T>(key: string, value: T | undefined): Record<string, T> | object {

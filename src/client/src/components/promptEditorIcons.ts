@@ -1,4 +1,5 @@
 import { svg, type TemplateResult } from "lit";
+import type { ThinkingGauge } from "../../../shared/thinkingLevels";
 
 // Hand-rolled inline icons matching the project's stroke style
 // (viewBox 0 0 24 24, fill none, stroke currentColor, round caps/joins).
@@ -45,28 +46,24 @@ export function renderStopIcon(): TemplateResult {
   `;
 }
 
-const THINKING_LEVEL_STEPS: Record<string, number> = {
-  off: 0,
-  minimal: 1,
-  low: 2,
-  medium: 3,
-  high: 4,
-  xhigh: 5,
-};
-
-export function thinkingLevelLabel(level: string | undefined): string {
-  return level === undefined || level === "" ? "off" : level;
-}
-
-/** A 5-bar gauge that fills up to the active thinking level. */
-export function renderThinkingGauge(level: string | undefined): TemplateResult {
-  const steps = THINKING_LEVEL_STEPS[level ?? "off"] ?? 0;
-  const bars = [0, 1, 2, 3, 4].map((i) => {
-    const x = 3 + i * 4;
-    const height = 4 + i * 3;
+/**
+ * A gauge whose bar count comes from the available thinking levels (the non-"off"
+ * levels) and whose fill reflects the current level's rank. Bars are laid out to
+ * fill the 24x24 box regardless of count, so it adapts if pi changes the set.
+ */
+export function renderThinkingGauge(gauge: ThinkingGauge): TemplateResult {
+  const total = Math.max(gauge.total, 1);
+  const gap = total > 1 ? 1.2 : 0;
+  const left = 3;
+  const right = 21;
+  const span = right - left;
+  const barWidth = (span - gap * (total - 1)) / total;
+  const bars = Array.from({ length: total }, (_unused, i) => {
+    const x = left + i * (barWidth + gap);
+    const height = 4 + ((i + 1) / total) * 12;
     const y = 20 - height;
-    const active = i < steps;
-    return svg`<rect class=${active ? "gauge-bar gauge-bar-active" : "gauge-bar"} x=${x} y=${y} width="2.6" height=${height} rx="1"></rect>`;
+    const active = i < gauge.filled;
+    return svg`<rect class=${active ? "gauge-bar gauge-bar-active" : "gauge-bar"} x=${x} y=${y} width=${barWidth} height=${height} rx="1"></rect>`;
   });
   return svg`
     <svg class="prompt-thinking-gauge" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
