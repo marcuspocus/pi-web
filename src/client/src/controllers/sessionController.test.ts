@@ -269,7 +269,7 @@ describe("SessionController", () => {
     const attachments: PromptAttachment[] = [{ kind: "image", mimeType: "image/png", data: "QUJD", name: "shot.png" }];
     const api: typeof defaultApi = {
       ...defaultApi,
-      saveAttachments: (_session, sent) => { savedCalledWith = sent; return Promise.resolve([{ path: ".pi-web/paste/shot.png", mimeType: "image/png", size: 3 }]); },
+      saveAttachments: (_session, sent) => { savedCalledWith = sent; return Promise.resolve([{ path: ".pi-web/attachments/shot.png", mimeType: "image/png", size: 3 }]); },
       prompt: (_session, text, _behavior, _machineId, sentAttachments) => { promptText = text; promptAttachments = sentAttachments; return Promise.resolve({ accepted: true }); },
     };
     const controller = new SessionController(
@@ -283,7 +283,7 @@ describe("SessionController", () => {
     await controller.send("check this", undefined, attachments, "folder");
 
     expect(savedCalledWith).toEqual(attachments);
-    expect(promptText).toBe("check this\n\n@.pi-web/paste/shot.png");
+    expect(promptText).toBe("check this\n\n@.pi-web/attachments/shot.png");
     expect(promptAttachments).toBeUndefined();
     expect(state.sendingPrompts).toEqual({});
   });
