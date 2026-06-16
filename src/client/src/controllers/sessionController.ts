@@ -94,7 +94,10 @@ export class SessionController {
       const session = await this.api.startSession(workspace.path, machineId);
       rememberCachedNewSession(session, machineId);
       const cachedSession = markCachedNewSessionInfo(session, machineId);
-      this.setState({ sessions: [cachedSession, ...this.getState().sessions] });
+      // Drop any entry the session.created broadcast may have inserted for this
+      // same session before the HTTP response resolved, so the cached marker
+      // (and its delete action) wins instead of leaving a duplicate badge.
+      this.setState({ sessions: [cachedSession, ...this.getState().sessions.filter((candidate) => candidate.id !== cachedSession.id)] });
       await this.selectSession(cachedSession);
     } catch (error) {
       this.setState({ error: String(error) });

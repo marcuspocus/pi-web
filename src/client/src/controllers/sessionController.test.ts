@@ -174,6 +174,36 @@ describe("SessionController", () => {
     expect(state.sessions.map((session) => session.id)).toEqual(["old-session"]);
   });
 
+  it("does not duplicate a started session when its session.created broadcast races the HTTP response", async () => {
+    const storage = new MemoryStorage();
+    Object.defineProperty(globalThis, "localStorage", { value: storage, configurable: true });
+    const started: SessionInfo = { ...oldSession, id: "started-session", path: "/tmp/started-session.jsonl" };
+    let state: AppState = { ...initialAppState(), selectedWorkspace: workspace, sessions: [] };
+    const socket = new FakeSocket();
+    const api: typeof defaultApi = {
+      ...defaultApi,
+      startSession: () => {
+        // Simulate the broadcast arriving before the HTTP response resolves.
+        controller.applyGlobalEvent({ type: "session.created", session: started });
+        return Promise.resolve(started);
+      },
+      messages: () => Promise.resolve(emptyPage),
+      status: (session) => Promise.resolve(status(sessionLookupId(session))),
+    };
+    const controller = new SessionController(
+      () => state,
+      (patch) => { state = { ...state, ...patch }; },
+      () => undefined,
+      undefined,
+      { api, socket },
+    );
+
+    await controller.startSession();
+
+    expect(state.sessions.map((session) => session.id)).toEqual(["started-session"]);
+    expect(isCachedNewSessionInfo(state.sessions[0])).toBe(true);
+  });
+
   it("toggles the per-session sending state around an inline attachment send and forwards attachments", async () => {
     let resolvePrompt: (() => void) | undefined;
     let promptArgs: { attachments?: PromptAttachment[] } | undefined;
