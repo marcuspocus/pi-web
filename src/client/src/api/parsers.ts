@@ -445,6 +445,8 @@ function parsePiWebConfigValues(value: unknown): PiWebConfigValues {
     ...optionalField("allowedHosts", optionalAllowedHosts(record["allowedHosts"])),
     ...optionalField("shortcuts", optionalShortcuts(record["shortcuts"])),
     ...optionalField("plugins", optionalPlugins(record["plugins"])),
+    ...optionalField("pathAccess", optionalPathAccess(record["pathAccess"])),
+    ...optionalField("maxUploadBytes", optionalNumber(record, "maxUploadBytes")),
     ...optionalField("spawnSessions", optionalBoolean(record, "spawnSessions")),
     ...optionalField("subsessions", optionalBoolean(record, "subsessions")),
   };
@@ -453,8 +455,31 @@ function parsePiWebConfigValues(value: unknown): PiWebConfigValues {
 function optionalAllowedHosts(value: unknown): PiWebConfigValues["allowedHosts"] | undefined {
   if (value === undefined) return undefined;
   if (value === true) return true;
-  if (Array.isArray(value) && value.every((item) => typeof item === "string")) return value;
+  if (isStringArray(value)) return value;
   throw new Error("Invalid PI WEB allowedHosts field");
+}
+
+function optionalPathAccess(value: unknown): PiWebConfigValues["pathAccess"] | undefined {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) throw new Error("Invalid PI WEB pathAccess field");
+  const allowedPaths = value["allowedPaths"];
+  return {
+    ...optionalField("allowedPaths", optionalStringArray(allowedPaths, "pathAccess.allowedPaths")),
+  };
+}
+
+function optionalStringArray(value: unknown, field: string): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (isNonEmptyStringArray(value)) return value;
+  throw new Error(`Invalid PI WEB ${field} field`);
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isNonEmptyStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string" && item !== "");
 }
 
 function optionalShortcuts(value: unknown): PiWebShortcutConfig | undefined {

@@ -101,6 +101,7 @@ export function savePiWebConfig(config: PiWebConfig, options: LoadOptions = {}):
   delete existing["allowedHosts"];
   delete existing["shortcuts"];
   delete existing["plugins"];
+  delete existing["pathAccess"];
   delete existing["maxUploadBytes"];
   delete existing["spawnSessions"];
   delete existing["subsessions"];
@@ -124,6 +125,7 @@ function piWebConfigRecord(config: PiWebConfig): Record<string, unknown> {
     ...(config.allowedHosts !== undefined ? { allowedHosts: config.allowedHosts } : {}),
     ...(config.shortcuts !== undefined ? { shortcuts: config.shortcuts } : {}),
     ...(config.plugins !== undefined ? { plugins: config.plugins } : {}),
+    ...(config.pathAccess !== undefined ? { pathAccess: config.pathAccess } : {}),
     ...(config.maxUploadBytes !== undefined ? { maxUploadBytes: config.maxUploadBytes } : {}),
     ...(config.spawnSessions !== undefined ? { spawnSessions: config.spawnSessions } : {}),
     ...(config.subsessions !== undefined ? { subsessions: config.subsessions } : {}),
@@ -137,6 +139,7 @@ function parsePiWebConfig(value: Record<string, unknown>, path: string): PiWebCo
     ...(value["allowedHosts"] !== undefined ? { allowedHosts: parseAllowedHosts(value["allowedHosts"], path) } : {}),
     ...(value["shortcuts"] !== undefined ? { shortcuts: parseShortcuts(value["shortcuts"], path) } : {}),
     ...(value["plugins"] !== undefined ? { plugins: parsePlugins(value["plugins"], path) } : {}),
+    ...(value["pathAccess"] !== undefined ? { pathAccess: parsePathAccessConfig(value["pathAccess"], path) } : {}),
     ...(value["maxUploadBytes"] !== undefined ? { maxUploadBytes: parseMaxUploadBytes(value["maxUploadBytes"], "maxUploadBytes", path) } : {}),
     ...(value["spawnSessions"] !== undefined ? { spawnSessions: parseSpawnSessions(value["spawnSessions"], path) } : {}),
     ...(value["subsessions"] !== undefined ? { subsessions: parseSubsessions(value["subsessions"], path) } : {}),
@@ -207,6 +210,19 @@ function parseAllowedHosts(value: unknown, path: string): string[] | true {
 function parseAllowedHostsEnv(value: string): string[] | true {
   if (value === "true") return true;
   return value.split(",").map((host) => host.trim()).filter((host) => host !== "");
+}
+
+export function parsePathAccessConfig(value: unknown, path: string): NonNullable<PiWebConfigValues["pathAccess"]> {
+  if (!isRecord(value)) throw new Error(`PI WEB config pathAccess must be an object: ${path}`);
+  const allowedPaths = value["allowedPaths"];
+  return {
+    ...(allowedPaths !== undefined ? { allowedPaths: parseAllowedPaths(allowedPaths, path) } : {}),
+  };
+}
+
+function parseAllowedPaths(value: unknown, path: string): string[] {
+  if (!isNonEmptyStringArray(value)) throw new Error(`PI WEB config pathAccess.allowedPaths must be an array of non-empty strings: ${path}`);
+  return value;
 }
 
 function parseShortcuts(value: unknown, path: string): Record<string, string | null> {

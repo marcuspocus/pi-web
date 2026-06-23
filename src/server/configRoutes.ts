@@ -58,6 +58,8 @@ function parseConfigRequest(value: unknown): PiWebConfig {
   const allowedHosts = value["allowedHosts"];
   const shortcuts = value["shortcuts"];
   const plugins = value["plugins"];
+  const pathAccess = value["pathAccess"];
+  const maxUploadBytes = value["maxUploadBytes"];
   const spawnSessions = value["spawnSessions"];
   const subsessions = value["subsessions"];
   if (host !== undefined) {
@@ -71,6 +73,8 @@ function parseConfigRequest(value: unknown): PiWebConfig {
   if (allowedHosts !== undefined) config.allowedHosts = parseAllowedHostsRequest(allowedHosts);
   if (shortcuts !== undefined) config.shortcuts = parseShortcutsRequest(shortcuts);
   if (plugins !== undefined) config.plugins = parsePluginsRequest(plugins);
+  if (pathAccess !== undefined) config.pathAccess = parsePathAccessRequest(pathAccess);
+  if (maxUploadBytes !== undefined) config.maxUploadBytes = parseMaxUploadBytesRequest(maxUploadBytes);
   if (spawnSessions !== undefined) {
     if (typeof spawnSessions !== "boolean") throw new Error("PI WEB config spawnSessions must be a boolean");
     config.spawnSessions = spawnSessions;
@@ -96,6 +100,30 @@ function parseShortcutsRequest(value: unknown): Record<string, string | null> {
     if (shortcut !== null && (typeof shortcut !== "string" || shortcut === "")) throw new Error("PI WEB config shortcut values must be non-empty strings or null");
     return [actionId, shortcut];
   }));
+}
+
+function parsePathAccessRequest(value: unknown): NonNullable<PiWebConfig["pathAccess"]> {
+  if (!isRecord(value)) throw new Error("PI WEB config pathAccess must be an object");
+  const allowedPaths = value["allowedPaths"];
+  return {
+    ...(allowedPaths === undefined ? {} : { allowedPaths: parseAllowedPathsRequest(allowedPaths) }),
+  };
+}
+
+function parseAllowedPathsRequest(value: unknown): string[] {
+  if (!isNonEmptyStringArray(value)) {
+    throw new Error("PI WEB config pathAccess.allowedPaths must be an array of non-empty strings");
+  }
+  return value;
+}
+
+function isNonEmptyStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string" && item !== "");
+}
+
+function parseMaxUploadBytesRequest(value: unknown): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) throw new Error("PI WEB config maxUploadBytes must be a positive integer");
+  return value;
 }
 
 function parsePluginsRequest(value: unknown): NonNullable<PiWebConfig["plugins"]> {
