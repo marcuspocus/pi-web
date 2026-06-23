@@ -847,6 +847,60 @@ code .comment,
   font-size: 1.25rem;
 }
 
+.table-scroll {
+  overflow-x: auto;
+  margin: 16px 0;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.doc-content table {
+  width: 100%;
+  min-width: 860px;
+  border-collapse: collapse;
+}
+
+.doc-content th,
+.doc-content td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.doc-content th {
+  background: var(--panel-strong);
+  color: var(--text);
+  font-size: 0.78rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.doc-content .table-section th {
+  border-top: 2px solid var(--line-bright);
+  border-bottom-color: var(--line-bright);
+  background: var(--panel-strong);
+  color: var(--text);
+  letter-spacing: 0.08em;
+}
+
+.doc-content td {
+  color: var(--muted);
+}
+
+.doc-content td:first-child {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.doc-content tr:last-child td {
+  border-bottom: 0;
+}
+
+.doc-content table code {
+  white-space: nowrap;
+}
+
 .code-card {
   overflow: hidden;
   margin: 16px 0;

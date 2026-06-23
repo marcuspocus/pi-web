@@ -17,6 +17,7 @@
     "LICENSE",
     "extensions",
     "docs/plugins.md",
+    "docs/config.md",
     "docs/assets",
     "plugin-api.d.ts",
     "plugin-api/unstable.d.ts"
