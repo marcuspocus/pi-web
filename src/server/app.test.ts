@@ -15,6 +15,7 @@ import type { SessionProxyDaemon } from "./sessiond/sessionProxyRoutes.js";
 import { PI_WEB_CAPABILITIES } from "../shared/capabilities.js";
 import { machineScopedPluginId } from "../shared/machinePluginIds.js";
 import { MAX_IMAGE_PREVIEW_BYTES } from "../shared/workspaceFiles.js";
+import type { PiWebConfigResponse, PiWebConfigValues } from "../shared/apiTypes.js";
 import type { Project, Workspace } from "./types.js";
 
 let app: FastifyInstance;
@@ -22,12 +23,14 @@ let tempDir: string;
 let projectDir: string;
 let remoteClient: MachineClient | undefined;
 let sessionDaemonRequests: CapturedSessionDaemonRequest[];
+let piWebConfig: PiWebConfigValues;
 
 beforeEach(async () => {
   tempDir = await realpath(await mkdtemp(join(tmpdir(), "pi-web-app-test-")));
   projectDir = join(tempDir, "project");
   remoteClient = undefined;
   sessionDaemonRequests = [];
+  piWebConfig = {};
   app = await buildApp({
     projects: new ProjectService(new ProjectStore(join(tempDir, "projects.json"))),
     workspaces: new WorkspaceService(),
@@ -48,6 +51,7 @@ beforeEach(async () => {
       }),
     }),
     sessionDaemon: fakeSessionDaemon(),
+    config: fakeConfigService(),
     piWebPlugins: {
       manifest: () => Promise.resolve({ plugins: [{ id: "fake", module: "/pi-web-plugins/fake/plugin.js?v=1", source: "test", scope: "local", machineSpecific: false }] }),
       plugins: () => Promise.resolve({ plugins: [{ id: "fake", module: "/pi-web-plugins/fake/plugin.js?v=1", source: "test", scope: "local", machineSpecific: false, enabled: true }] }),
@@ -204,6 +208,23 @@ describe("buildApp", () => {
     expect(closeWorkspaceTerminalsResponse.json()).toEqual({ method: "DELETE", path: "/api/projects/p1/workspaces/w1/terminals" });
     expect(continueResponse.json()).toEqual({ method: "POST", path: "/api/projects/p1/workspaces/w1/terminals/t1/continue" });
     expect(request).toHaveBeenCalledWith("POST", "/api/projects/p1/workspaces/w1/terminal-command-runs", createBody);
+  });
+
+  it("proxies remote session reloads through the selected machine", async () => {
+    const addResponse = await app.inject({ method: "POST", url: "/api/machines", payload: { name: "Remote", baseUrl: "https://remote.example.test/" } });
+    const remote = addResponse.json<{ id: string }>();
+    const request = vi.fn(() => Promise.resolve({
+      statusCode: 200,
+      headers: { "content-type": "application/json" },
+      body: Readable.from([JSON.stringify({ reloaded: true })]),
+    }));
+    remoteClient = fakeRemoteClient({ request });
+
+    const response = await app.inject({ method: "POST", url: `/api/machines/${remote.id}/sessions/s1/reload`, payload: { cwd: "/repo" } });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ reloaded: true });
+    expect(request).toHaveBeenCalledWith("POST", "/api/sessions/s1/reload", { cwd: "/repo" });
   });
 
   it("forwards remote JSON request bodies and normalizes remote timeouts", async () => {
@@ -479,6 +500,64 @@ describe("buildApp", () => {
     expect(tooLargeResponse.json()).toEqual({ error: "Image is too large to preview (limit 10 MB)" });
   });
 
+  it("keeps normal file suggestions workspace-local when path access config is invalid", async () => {
+    const addResponse = await app.inject({
+      method: "POST",
+      url: "/api/projects",
+      payload: { name: "Local Suggestions", path: projectDir, create: true },
+    });
+    expect(addResponse.statusCode).toBe(200);
+    await writeFile(join(projectDir, "sdk.md"), "local sdk\n");
+    await mkdir(join(projectDir, ".pi-web"), { recursive: true });
+    await writeFile(join(projectDir, ".pi-web", "config.json"), `${JSON.stringify({ version: 1, pathAccess: { allowedPaths: [""] } }, null, 2)}\n`);
+
+    const response = await app.inject({ method: "GET", url: `/api/files?cwd=${encodeURIComponent(projectDir)}&q=sdk&scope=all` });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual([{ path: "sdk.md", kind: "other" }]);
+  });
+
+  it("serves project-configured allowed external files through the workspace explorer", async () => {
+    const addResponse = await app.inject({
+      method: "POST",
+      url: "/api/projects",
+      payload: { name: "External", path: projectDir, create: true },
+    });
+    const project = addResponse.json<Project>();
+    const externalDir = join(tempDir, "external-docs");
+    const deniedFile = join(tempDir, "secret.md");
+    await mkdir(externalDir);
+    await writeFile(join(externalDir, "sdk.md"), "external sdk\n");
+    await writeFile(deniedFile, "secret\n");
+    await mkdir(join(projectDir, ".pi-web"), { recursive: true });
+    await writeFile(join(projectDir, ".pi-web", "config.json"), `${JSON.stringify({ version: 1, pathAccess: { allowedPaths: [externalDir] } }, null, 2)}\n`);
+
+    const workspacesResponse = await app.inject({ method: "GET", url: `/api/projects/${project.id}/workspaces` });
+    const workspace = workspacesResponse.json<Workspace[]>()[0];
+    if (workspace === undefined) throw new Error("Expected workspace");
+
+    const fileResponse = await app.inject({ method: "GET", url: `/api/projects/${project.id}/workspaces/${workspace.id}/file?path=${encodeURIComponent(join(externalDir, "sdk.md"))}` });
+    const treeResponse = await app.inject({ method: "GET", url: `/api/projects/${project.id}/workspaces/${workspace.id}/tree?path=${encodeURIComponent(externalDir)}` });
+    const suggestionResponse = await app.inject({ method: "GET", url: `/api/projects/${project.id}/workspaces/${workspace.id}/files?q=${encodeURIComponent(join(externalDir, "s"))}` });
+    const localSuggestionResponse = await app.inject({ method: "GET", url: `/api/projects/${project.id}/workspaces/${workspace.id}/files?q=sdk` });
+    const deniedResponse = await app.inject({ method: "GET", url: `/api/projects/${project.id}/workspaces/${workspace.id}/file?path=${encodeURIComponent(deniedFile)}` });
+
+    expect(fileResponse.statusCode).toBe(200);
+    expect(fileResponse.json()).toMatchObject({ path: join(externalDir, "sdk.md"), content: "external sdk\n", binary: false });
+    expect(treeResponse.statusCode).toBe(200);
+    expect(treeResponse.json()).toMatchObject({
+      path: externalDir,
+      entries: [expect.objectContaining({ name: "sdk.md", path: join(externalDir, "sdk.md"), type: "file" })],
+      truncated: false,
+    });
+    expect(suggestionResponse.statusCode).toBe(200);
+    expect(suggestionResponse.json()).toEqual([{ path: join(externalDir, "sdk.md"), kind: "other" }]);
+    expect(localSuggestionResponse.statusCode).toBe(200);
+    expect(localSuggestionResponse.json()).toEqual([]);
+    expect(deniedResponse.statusCode).toBe(400);
+    expect(deniedResponse.json()).toEqual({ error: "Path is outside allowed paths" });
+  });
+
   it("writes workspace files through the HTTP contract", async () => {
     const addResponse = await app.inject({
       method: "POST",
@@ -490,7 +569,6 @@ describe("buildApp", () => {
     const workspace = workspacesResponse.json<Workspace[]>()[0];
     if (workspace === undefined) throw new Error("Expected workspace");
 
-    // Write a text file
     const writeTextResponse = await app.inject({
       method: "PUT",
       url: `/api/projects/${project.id}/workspaces/${workspace.id}/file?path=${encodeURIComponent("hello.txt")}`,
@@ -499,15 +577,11 @@ describe("buildApp", () => {
     });
     expect(writeTextResponse.statusCode).toBe(200);
     expect(writeTextResponse.json()).toMatchObject({ path: "hello.txt", created: true });
-    const writeBody = writeTextResponse.json<Record<string, unknown>>();
-    expect(typeof writeBody['size']).toBe("number");
+    expect(typeof writeTextResponse.json<{ size: unknown }>().size).toBe("number");
 
-    // Read it back
     const readResponse = await app.inject({ method: "GET", url: `/api/projects/${project.id}/workspaces/${workspace.id}/file?path=${encodeURIComponent("hello.txt")}` });
-    const readBody = readResponse.json<Record<string, unknown>>();
-    expect(readBody['content']).toBe("hello world");
+    expect(readResponse.json<{ content: unknown }>().content).toBe("hello world");
 
-    // Write binary content
     const writeBinaryResponse = await app.inject({
       method: "PUT",
       url: `/api/projects/${project.id}/workspaces/${workspace.id}/file?path=${encodeURIComponent("image.png")}`,
@@ -517,7 +591,6 @@ describe("buildApp", () => {
     expect(writeBinaryResponse.statusCode).toBe(200);
     expect(writeBinaryResponse.json()).toMatchObject({ path: "image.png", created: true });
 
-    // Create intermediate directories (default)
     const writeDeepResponse = await app.inject({
       method: "PUT",
       url: `/api/projects/${project.id}/workspaces/${workspace.id}/file?path=${encodeURIComponent("deep/nested/dir/file.txt")}`,
@@ -526,12 +599,9 @@ describe("buildApp", () => {
     });
     expect(writeDeepResponse.statusCode).toBe(200);
 
-    // Verify the nested file was written
     const readDeepResponse = await app.inject({ method: "GET", url: `/api/projects/${project.id}/workspaces/${workspace.id}/file?path=${encodeURIComponent("deep/nested/dir/file.txt")}` });
-    const readDeepBody = readDeepResponse.json<Record<string, unknown>>();
-    expect(readDeepBody['content']).toBe("deep content");
+    expect(readDeepResponse.json<{ content: unknown }>().content).toBe("deep content");
 
-    // Overwrite an existing file (default)
     const overwriteResponse = await app.inject({
       method: "PUT",
       url: `/api/projects/${project.id}/workspaces/${workspace.id}/file?path=${encodeURIComponent("hello.txt")}`,
@@ -540,7 +610,6 @@ describe("buildApp", () => {
     });
     expect(overwriteResponse.json()).toMatchObject({ path: "hello.txt", created: false });
 
-    // Reject overwrite=false when file exists
     const noOverwriteResponse = await app.inject({
       method: "PUT",
       url: `/api/projects/${project.id}/workspaces/${workspace.id}/file?path=${encodeURIComponent("hello.txt")}&overwrite=false`,
@@ -548,10 +617,8 @@ describe("buildApp", () => {
       headers: { "content-type": "text/plain" },
     });
     expect(noOverwriteResponse.statusCode).toBe(400);
-    const noOverwriteBody = noOverwriteResponse.json<Record<string, unknown>>();
-    expect(noOverwriteBody['error']).toContain("File already exists");
+    expect(noOverwriteResponse.json<{ error: string }>().error).toContain("File already exists");
 
-    // Reject path traversal
     const traversalResponse = await app.inject({
       method: "PUT",
       url: `/api/projects/${project.id}/workspaces/${workspace.id}/file?path=${encodeURIComponent("../../etc/passwd")}`,
@@ -559,10 +626,8 @@ describe("buildApp", () => {
       headers: { "content-type": "text/plain" },
     });
     expect(traversalResponse.statusCode).toBe(400);
-    const traversalBody = traversalResponse.json<Record<string, unknown>>();
-    expect(traversalBody['error']).toContain("Path traversal");
+    expect(traversalResponse.json<{ error: string }>().error).toContain("Path traversal");
 
-    // Reject missing path
     const noPathResponse = await app.inject({
       method: "PUT",
       url: `/api/projects/${project.id}/workspaces/${workspace.id}/file`,
@@ -570,10 +635,8 @@ describe("buildApp", () => {
       headers: { "content-type": "text/plain" },
     });
     expect(noPathResponse.statusCode).toBe(400);
-    const noPathBody = noPathResponse.json<Record<string, unknown>>();
-    expect(noPathBody['error']).toContain("path query parameter is required");
+    expect(noPathResponse.json<{ error: string }>().error).toContain("path query parameter is required");
 
-    // Fail when createDirs=false and parent directory does not exist
     const noDirsResponse = await app.inject({
       method: "PUT",
       url: `/api/projects/${project.id}/workspaces/${workspace.id}/file?path=${encodeURIComponent("nonexistent/parent/file.txt")}&createDirs=false`,
@@ -582,7 +645,6 @@ describe("buildApp", () => {
     });
     expect(noDirsResponse.statusCode).toBe(400);
 
-    // Reject writing to a directory path
     await mkdir(join(projectDir, "subdir"), { recursive: true });
     const dirWriteResponse = await app.inject({
       method: "PUT",
@@ -604,7 +666,6 @@ describe("buildApp", () => {
     const workspace = workspacesResponse.json<Workspace[]>()[0];
     if (workspace === undefined) throw new Error("Expected workspace");
 
-    // Write a file first so we can delete it
     await app.inject({
       method: "PUT",
       url: `/api/projects/${project.id}/workspaces/${workspace.id}/file?path=${encodeURIComponent("to-delete.txt")}`,
@@ -612,7 +673,6 @@ describe("buildApp", () => {
       headers: { "content-type": "text/plain" },
     });
 
-    // Delete existing file
     const deleteResponse = await app.inject({
       method: "DELETE",
       url: `/api/projects/${project.id}/workspaces/${workspace.id}/file?path=${encodeURIComponent("to-delete.txt")}`,
@@ -620,7 +680,6 @@ describe("buildApp", () => {
     expect(deleteResponse.statusCode).toBe(200);
     expect(deleteResponse.json()).toMatchObject({ path: "to-delete.txt", existed: true });
 
-    // Delete non-existent file (idempotent)
     const deleteMissingResponse = await app.inject({
       method: "DELETE",
       url: `/api/projects/${project.id}/workspaces/${workspace.id}/file?path=${encodeURIComponent("missing.txt")}`,
@@ -628,23 +687,19 @@ describe("buildApp", () => {
     expect(deleteMissingResponse.statusCode).toBe(200);
     expect(deleteMissingResponse.json()).toMatchObject({ path: "missing.txt", existed: false });
 
-    // Reject path traversal
     const traversalResponse = await app.inject({
       method: "DELETE",
       url: `/api/projects/${project.id}/workspaces/${workspace.id}/file?path=${encodeURIComponent("../../etc/passwd")}`,
     });
     expect(traversalResponse.statusCode).toBe(400);
-    const deleteTraversalBody = traversalResponse.json<Record<string, unknown>>();
-    expect(deleteTraversalBody['error']).toContain("Path traversal");
+    expect(traversalResponse.json<{ error: string }>().error).toContain("Path traversal");
 
-    // Reject missing path
     const noPathResponse = await app.inject({
       method: "DELETE",
       url: `/api/projects/${project.id}/workspaces/${workspace.id}/file`,
     });
     expect(noPathResponse.statusCode).toBe(400);
-    const deleteNoPathBody = noPathResponse.json<Record<string, unknown>>();
-    expect(deleteNoPathBody['error']).toContain("path query parameter is required");
+    expect(noPathResponse.json<{ error: string }>().error).toContain("path query parameter is required");
   });
 
   it("moves workspace files through the HTTP contract", async () => {
@@ -658,7 +713,6 @@ describe("buildApp", () => {
     const workspace = workspacesResponse.json<Workspace[]>()[0];
     if (workspace === undefined) throw new Error("Expected workspace");
 
-    // Write a file first so we can move it
     await app.inject({
       method: "PUT",
       url: `/api/projects/${project.id}/workspaces/${workspace.id}/file?path=${encodeURIComponent("original.txt")}`,
@@ -666,27 +720,21 @@ describe("buildApp", () => {
       headers: { "content-type": "text/plain" },
     });
 
-    // Move a file to a new path
     const moveResponse = await app.inject({
       method: "POST",
       url: `/api/projects/${project.id}/workspaces/${workspace.id}/file/move?fromPath=${encodeURIComponent("original.txt")}&toPath=${encodeURIComponent("moved.txt")}`,
     });
     expect(moveResponse.statusCode).toBe(200);
     expect(moveResponse.json()).toMatchObject({ fromPath: "original.txt", toPath: "moved.txt" });
-    const moveBody = moveResponse.json<Record<string, unknown>>();
-    expect(typeof moveBody['size']).toBe("number");
+    expect(typeof moveResponse.json<{ size: unknown }>().size).toBe("number");
 
-    // Verify source is gone
     const readSourceResponse = await app.inject({ method: "GET", url: `/api/projects/${project.id}/workspaces/${workspace.id}/file?path=${encodeURIComponent("original.txt")}` });
     expect(readSourceResponse.statusCode).toBe(400);
 
-    // Verify target exists
     const readTargetResponse = await app.inject({ method: "GET", url: `/api/projects/${project.id}/workspaces/${workspace.id}/file?path=${encodeURIComponent("moved.txt")}` });
     expect(readTargetResponse.statusCode).toBe(200);
-    const targetBody = readTargetResponse.json<Record<string, unknown>>();
-    expect(targetBody['content']).toBe("move me");
+    expect(readTargetResponse.json<{ content: unknown }>().content).toBe("move me");
 
-    // Write another file for overwrite test
     await app.inject({
       method: "PUT",
       url: `/api/projects/${project.id}/workspaces/${workspace.id}/file?path=${encodeURIComponent("source2.txt")}`,
@@ -700,14 +748,12 @@ describe("buildApp", () => {
       headers: { "content-type": "text/plain" },
     });
 
-    // Move with overwrite=true succeeds
     const overwriteResponse = await app.inject({
       method: "POST",
       url: `/api/projects/${project.id}/workspaces/${workspace.id}/file/move?fromPath=${encodeURIComponent("source2.txt")}&toPath=${encodeURIComponent("target2.txt")}&overwrite=true`,
     });
     expect(overwriteResponse.statusCode).toBe(200);
 
-    // Move with overwrite=false (default) fails when target exists
     await app.inject({
       method: "PUT",
       url: `/api/projects/${project.id}/workspaces/${workspace.id}/file?path=${encodeURIComponent("source3.txt")}`,
@@ -725,24 +771,20 @@ describe("buildApp", () => {
       url: `/api/projects/${project.id}/workspaces/${workspace.id}/file/move?fromPath=${encodeURIComponent("source3.txt")}&toPath=${encodeURIComponent("target3.txt")}`,
     });
     expect(noOverwriteResponse.statusCode).toBe(400);
-    const moveNoOverwriteBody = noOverwriteResponse.json<Record<string, unknown>>();
-    expect(moveNoOverwriteBody['error']).toContain("File already exists");
+    expect(noOverwriteResponse.json<{ error: string }>().error).toContain("File already exists");
 
-    // Reject path traversal in fromPath
     const traversalFromResponse = await app.inject({
       method: "POST",
       url: `/api/projects/${project.id}/workspaces/${workspace.id}/file/move?fromPath=${encodeURIComponent("../../etc/passwd")}&toPath=${encodeURIComponent("safe.txt")}`,
     });
     expect(traversalFromResponse.statusCode).toBe(400);
 
-    // Reject missing params
     const noParamsResponse = await app.inject({
       method: "POST",
       url: `/api/projects/${project.id}/workspaces/${workspace.id}/file/move`,
     });
     expect(noParamsResponse.statusCode).toBe(400);
-    const noParamsBody = noParamsResponse.json<Record<string, unknown>>();
-    expect(noParamsBody['error']).toContain("fromPath query parameter is required");
+    expect(noParamsResponse.json<{ error: string }>().error).toContain("fromPath query parameter is required");
   });
 });
 
@@ -750,6 +792,26 @@ interface CapturedSessionDaemonRequest {
   method: string;
   path: string;
   body?: unknown;
+}
+
+function fakeConfigService() {
+  return {
+    read: () => piWebConfigResponse(piWebConfig),
+    write: (config: PiWebConfigValues) => {
+      piWebConfig = config;
+      return piWebConfigResponse(config);
+    },
+  };
+}
+
+function piWebConfigResponse(config: PiWebConfigValues): PiWebConfigResponse {
+  return {
+    path: join(tempDir, "config.json"),
+    exists: false,
+    config,
+    effectiveConfig: config,
+    envOverrides: { host: false, port: false, allowedHosts: false, spawnSessions: false, subsessions: false },
+  };
 }
 
 function fakeSessionDaemon(): SessionProxyDaemon {

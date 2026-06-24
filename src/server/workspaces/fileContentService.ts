@@ -1,23 +1,24 @@
 import { lstat, mkdir, open, realpath, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import type { DeleteWorkspaceFileResponse, FileContentResponse, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse } from "../../shared/apiTypes.js";
+import type { DeleteWorkspaceFileResponse, FileContentResponse, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebPathAccessConfig, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse } from "../../shared/apiTypes.js";
 import { imageMimeTypeForPath } from "./imagePreviewService.js";
+import { resolveWorkspacePathAccessTarget } from "./pathAccessPolicy.js";
 import { ensureInside, isNodeErrorWithCode, resolveInsideWorkspace, resolveParentInsideWorkspace } from "./pathSafety.js";
 
 const MAX_BYTES = 512 * 1024;
 
-export async function readWorkspaceFile(rootPath: string, path: string | undefined): Promise<FileContentResponse> {
+export async function readWorkspaceFile(rootPath: string, path: string | undefined, pathAccess?: PiWebPathAccessConfig): Promise<FileContentResponse> {
   if (path === undefined || path === "") throw new Error("path query parameter is required");
-  const { target, relativePath } = await resolveInsideWorkspace(rootPath, path);
+  const { target, displayPath } = await resolveWorkspacePathAccessTarget(rootPath, path, pathAccess);
   const s = await stat(target);
   if (!s.isFile()) throw new Error("Path is not a file");
   const bytesToRead = Math.min(s.size, MAX_BYTES);
   const buffer = await readFilePrefix(target, bytesToRead);
-  const media = mediaForPath(relativePath);
+  const media = mediaForPath(displayPath);
   const binary = media.mediaType === "image" || isProbablyBinary(buffer);
   return {
-    path: relativePath,
-    ...languageForPath(relativePath),
+    path: displayPath,
+    ...languageForPath(displayPath),
     ...media,
     encoding: "utf8",
     size: s.size,

@@ -1,4 +1,4 @@
-# PI WEB
+# PI WEB — web UI for Pi Coding Agent
 
 [![CI](https://github.com/jmfederico/pi-web/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jmfederico/pi-web/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/@jmfederico/pi-web)](https://www.npmjs.com/package/@jmfederico/pi-web)
@@ -10,11 +10,16 @@ Website: <https://pi-web.dev/>
 
 ![PI WEB](docs/assets/pi-web-banner.png)
 
-**Run AI coding agents on your own machine or server, keep them alive in real workspaces, and control everything from a browser.**
+**Run Pi Coding Agent from a web UI, keep sessions alive in real workspaces, and supervise them from any device.**
 
-PI WEB is a web control plane for [Pi Coding Agent](https://github.com/earendil-works/pi/tree/main/packages/coding-agent). Add your repositories once, open project workspaces and git worktrees, start agent sessions inside them, and come back later without losing the work. Your browser becomes the cockpit; your server becomes the persistent development environment. Start on your laptop, check in from your phone, and continue from an iPad or another machine whenever that is the device you have at hand.
+PI WEB is a web UI for [Pi Coding Agent](https://github.com/earendil-works/pi/tree/main/packages/coding-agent) that keeps agent sessions running on your own machine or server. Add your repositories once, open project workspaces and git worktrees, start sessions inside them, and come back later without losing the work. Your browser becomes the cockpit; your server becomes the persistent development environment. Start on your laptop, check in from your phone, and continue from an iPad or another machine whenever that is the device you have at hand.
 
-![PI WEB demo](docs/assets/pi-web-demo.gif)
+![PI WEB desktop screenshot showing an agent-created pi-web.dev screenshot selected in the file preview](docs/assets/pi-web-desktop.png)
+
+<p align="center">
+  <img src="docs/assets/pi-web-tablet.png" alt="PI WEB tablet screenshot" width="58%" />
+  <img src="docs/assets/pi-web-mobile.png" alt="PI WEB mobile chat screenshot" width="28%" />
+</p>
 
 With PI WEB you can:
 
@@ -31,6 +36,10 @@ With PI WEB you can:
 Agentic development works best when agents are not trapped inside a single local terminal. They need stable environments, access to real repositories, and room to work across branches and tasks. Humans need the opposite: a clear place to supervise, redirect, review, and decide.
 
 PI WEB connects those two worlds. The work stays in the server-side environment while you move between devices: laptop for deep focus, phone for a quick check-in, tablet for review, desktop when you are back at a desk. It is not trying to recreate the old desktop IDE in a browser; it is a control surface for persistent, parallel, human-in-the-loop agent work.
+
+### Is PI WEB a Pi web UI?
+
+Yes. PI WEB is a Pi web UI for running and supervising Pi Coding Agent sessions from a browser. Unlike simple session viewers, PI WEB is built around persistent server-side workspaces, long-running session daemons, git worktrees, remote machines, and multi-device supervision.
 
 ## Core model
 
@@ -69,7 +78,7 @@ This maps naturally to real development work:
 
 ## Architecture
 
-PI WEB uses a split-process architecture so agent runtimes are not owned by the browser-facing dev server.
+PI WEB uses a split-process architecture so agent runtimes are not owned by the browser-facing dev server. Under the hood, it acts as a browser-based control plane for sessions, workspaces, files, terminals, and trusted remote machines.
 
 ```text
 Browser UI
@@ -104,7 +113,7 @@ PI WEB keeps its own state intentionally small:
 
 ## Machine federation
 
-The Machines section lets one PI WEB instance act as a gateway to other PI WEB runtimes. Register a remote machine from **Actions → Add Machine** with the remote PI WEB base URL, for example a URL reachable over NetBird, Tailscale, WireGuard, an SSH tunnel, or a trusted reverse proxy. The browser continues talking to the local PI WEB origin; project, workspace, file, git, session, activity, and terminal HTTP/WebSocket traffic is proxied server-to-server. See the [Fleet guide](https://pi-web.dev/machines.html) for setup, trust model, and troubleshooting details.
+The Machines section lets one PI WEB instance act as a gateway to other PI WEB runtimes. Register a remote machine from **Actions → Add Machine** with the remote PI WEB base URL, for example a URL reachable over NetBird, Tailscale, WireGuard, an SSH tunnel, or a trusted reverse proxy. The browser continues talking to the local PI WEB origin; project, workspace, file, git, session, activity, and terminal HTTP/WebSocket traffic is proxied server-to-server. See the [Fleet guide](https://pi-web.dev/machines) for setup, trust model, and troubleshooting details.
 
 Remote model-provider credentials and OAuth state stay on the target machine. API-key provider configuration can be proxied, but OAuth login should be completed by opening the remote PI WEB directly. Register remote machines only when you trust the endpoint and the network path: adding a machine gives this PI WEB server permission to contact that URL with the optional bearer token you configured.
 
@@ -118,7 +127,7 @@ A useful prompt for AI agents:
 
 ```text
 Build a PI WEB plugin for this project. Goal: <describe the UI behavior>.
-Before coding, read https://pi-web.dev/plugins.html and https://pi-web.dev/plugins.md.
+Before coding, read https://pi-web.dev/plugins and https://pi-web.dev/plugins.md.
 Create it under ~/.pi-web/plugins/<plugin-id> using the documented PI WEB v1 plugin API.
 Validate with /pi-web-plugins/manifest.json and explain reload/debug steps.
 Do not modify PI WEB itself.
@@ -250,10 +259,16 @@ npm publish --access public
 
 PI WEB uses a single-line CalVer-inspired npm version: `MAJOR.YYYYMM.SEQUENCE`, for example `1.202605.1`. The major number signals breaking-change eras; the middle number is the release month; the final number increments for additional releases in that month. Older major eras may be deprecated rather than maintained in parallel.
 
-PI WEB declares `@earendil-works/pi-coding-agent` as a peer dependency (`>=0.74.0 <1`) and a development dependency for local builds. This keeps published installs flexible: npm 7+ installs the peer automatically, and users can upgrade the Pi package within the compatible range without PI WEB pinning a separate copy.
+PI WEB declares `@earendil-works/pi-coding-agent` as a peer dependency (`>=0.78.0 <1`) and a development dependency for local builds. This keeps published installs flexible: npm 7+ installs the peer automatically, and users can upgrade the Pi package within the compatible range without PI WEB pinning a separate copy.
 
 
-The web server defaults to `127.0.0.1:8504`. Set `PI_WEB_HOST=0.0.0.0` only when you intentionally want to bind directly on all interfaces.
+## Configuration
+
+Global PI WEB config lives at `$PI_WEB_CONFIG`, or `$XDG_CONFIG_HOME/pi-web/config.json`, or `~/.config/pi-web/config.json`. Project-local core config lives at `<project>/.pi-web/config.json`.
+
+See the full [Configuration reference](docs/config.md) for config-file precedence, project-local config, external path access, session daemon settings, plugins, shortcuts, upload limits, and environment variables.
+
+The web server defaults to `127.0.0.1:8504`. Set `PI_WEB_HOST=0.0.0.0` only when you intentionally want to bind directly on all interfaces behind a trusted network, firewall, or authenticated proxy.
 
 The session daemon defaults to a private Unix socket at:
 
@@ -261,18 +276,26 @@ The session daemon defaults to a private Unix socket at:
 ~/.pi-web/sessiond.sock
 ```
 
-Environment variables:
+Common config keys:
 
-- `PI_WEB_PORT` / `PORT` — web server port. Defaults to `8504`.
-- `PI_WEB_HOST` — web server bind host. Defaults to `127.0.0.1`.
-- `PI_WEB_DATA_DIR` — PI WEB data directory. Defaults to `~/.pi-web`.
+- `host` / `port` — web/API bind address. Environment overrides: `PI_WEB_HOST`, `PI_WEB_PORT` / `PORT`.
+- `pathAccess.allowedPaths` — external filesystem roots that PI WEB may list/read through the file explorer and absolute `@` path completions. Absolute paths are denied by default.
+- `maxUploadBytes` — maximum accepted request body size. Defaults to 64 MB. Environment override: `PI_WEB_MAX_UPLOAD_BYTES`.
+- `spawnSessions` — enable the `spawn_session` tool. Defaults to `true`. Environment override: `PI_WEB_SPAWN_SESSIONS`.
+- `subsessions` — beta tracked-subsession tools (`spawn_subsession`, `list_subsessions`, `check_subsession`, `read_subsession`). Defaults to `false`, requires `spawnSessions`, and requires a session daemon restart after changes. Environment override: `PI_WEB_SUBSESSIONS`.
+- `plugins` — plugin enablement/settings. Reload the browser after changing plugin enablement.
+- `shortcuts` — keyboard shortcut overrides; use `null` to disable an action shortcut.
+
+Operational environment variables:
+
+- `PI_WEB_CONFIG` — path to the global config JSON file.
+- `PI_WEB_DATA_DIR` — PI WEB-managed data directory. Defaults to `~/.pi-web`.
 - `PI_WEB_SESSIOND_SOCKET` — Unix socket path used by both the daemon and web process when `PI_WEB_SESSIOND_URL` is not set. Defaults to `$PI_WEB_DATA_DIR/sessiond.sock`.
 - `PI_WEB_SESSIOND_PORT` — optional TCP port for the daemon. If unset, the daemon listens on the Unix socket instead.
 - `PI_WEB_SESSIOND_HOST` — daemon TCP bind host when `PI_WEB_SESSIOND_PORT` is set. Defaults to `127.0.0.1`.
 - `PI_WEB_SESSIOND_URL` — daemon URL used by the web process when connecting over TCP, for example `http://127.0.0.1:3001`. If you set `PI_WEB_SESSIOND_PORT`, set this for the web process too.
 - `PI_WEB_PROJECTS_FILE` — optional override for the projects storage JSON file. Defaults to `$PI_WEB_DATA_DIR/projects.json`.
 - `PI_WEB_MACHINES_FILE` — optional override for the remote machine registry JSON file. Defaults to `$PI_WEB_DATA_DIR/machines.json`.
-- `PI_WEB_MAX_UPLOAD_BYTES` — maximum accepted HTTP request body size in bytes (covers pasted/attached images). Defaults to 64 MB. Also configurable as `maxUploadBytes` in `config.json`.
 - `PI_CODING_AGENT_SESSION_DIR` — Pi session storage directory. PI WEB follows the same session-location priority as Pi for web sessions: this environment variable, then `sessionDir` in Pi settings for the selected workspace, then Pi's default session directory.
 - `PI_CODING_AGENT_DIR` — Pi agent config directory. PI WEB uses this for Pi auth, settings, resources, and default session storage, matching Pi's own configuration layout.
 

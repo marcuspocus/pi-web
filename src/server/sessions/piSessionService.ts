@@ -31,9 +31,29 @@ import type { SavedPromptAttachment } from "../../shared/apiTypes.js";
 
 import { cwdPathsEqual } from "../workingDirectory.js";
 import type { WorkspaceActivityService } from "../activity/workspaceActivityService.js";
+import { createSpawnSessionToolDefinition, type SpawnSessionInvocation, type SpawnSessionResult } from "./spawnSessionTool.js";
+import { createSubsessionToolDefinitions, type SpawnSubsessionInvocation, type SpawnSubsessionResult, type SubsessionCheckResult, type SubsessionReadQuery, type SubsessionReadResult, type SubsessionStatus, type SubsessionSummary, type SubsessionToolDeps } from "./spawnSubsessionTool.js";
+import { buildTranscriptView } from "./subsessionTranscript.js";
+import type { SpawnTargetDecision, SpawnTargetResolver } from "./spawnTargetResolver.js";
+
+/**
+ * Minimal structured-logging seam, shaped like Fastify's logger so sessiond can
+ * pass `app.log` directly. Defaults to a no-op so the service stays usable
+ * without booting a server (e.g. in tests).
+ */
+export interface PiSessionLogger {
+  info(details: Record<string, unknown>, message: string): void;
+}
+
+const noopLogger: PiSessionLogger = { info() { /* no-op */ } };
 
 function noop(): void {
   // Intentionally empty default unsubscribe callback.
+}
+
+function spawnTargetError(decision: Extract<SpawnTargetDecision, { allowed: false }>): Error {
+  if (decision.reason === "not-registered") return new Error("Spawning session is not in a registered project");
+  return new Error(`cwd must be a workspace of this project. Allowed: ${decision.allowedCwds.join(", ")}`);
 }
 
 function authLossWarningKey(sessionId: string, provider: string, modelId: string): string {
@@ -58,6 +78,7 @@ interface QueuedPrompt {
   kind: QueuedPromptKind;
   text: string;
   images?: ImageContent[];
+  echoUserMessage?: boolean;
 }
 
 function requirePromptText(value: unknown): string {
@@ -108,7 +129,7 @@ export interface PiSessionManager {
 
 export interface PiSessionManagerGateway {
   list(cwd: string): Promise<PiSessionListEntry[]>;
-  create(cwd: string): PiSessionManager;
+  create(cwd: string, options?: { parentSession?: string }): PiSessionManager;
   /**
    * Legacy id-only lookup surface for older clients. This intentionally searches
    * only Pi's default session store, because custom session directories require
@@ -153,6 +174,7 @@ export interface PiAgentSession {
   getSessionStats(): { sessionId: string; totalMessages: number; userMessages: number; assistantMessages: number; toolCalls: number; tokens: ClientSessionStatus["tokens"]; cost: number };
   getContextUsage(): ClientSessionStatus["contextUsage"] | undefined;
   prompt(text: string, options?: { streamingBehavior?: "steer" | "followUp"; images?: ImageContent[] }): Promise<void>;
+  sendCustomMessage(message: { customType: string; content: string; display: boolean; details?: unknown }, options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" }): Promise<void>;
   executeBash(command: string, onChunk?: (chunk: string) => void, options?: { excludeFromContext?: boolean }): Promise<{ output: string; exitCode: number | undefined; cancelled: boolean; truncated: boolean; fullOutputPath?: string }>;
   abort(): Promise<void>;
   clearQueue(): { steering: string[]; followUp: string[] };
@@ -187,10 +209,16 @@ function defaultCreateAgentRuntime(createRuntime: CreateAgentSessionRuntimeFacto
   return createAgentSessionRuntime(createRuntime, { ...options, sessionManager: options.sessionManager });
 }
 
-function createDefaultRuntimeFactory(authStorage: AuthStorage, modelRegistry: ModelRegistryInstance): CreateAgentSessionRuntimeFactory {
+type SpawnSessionFn = (input: SpawnSessionInvocation) => Promise<SpawnSessionResult>;
+
+function createDefaultRuntimeFactory(authStorage: AuthStorage, modelRegistry: ModelRegistryInstance, spawn?: SpawnSessionFn, subsessions?: SubsessionToolDeps): CreateAgentSessionRuntimeFactory {
   return async ({ cwd, agentDir, sessionManager, sessionStartEvent }) => {
     const services = await createAgentSessionServices({ cwd, agentDir, authStorage, modelRegistry });
-    const customTools = [createPiWebEditToolDefinition(cwd)];
+    const customTools = [
+      createPiWebEditToolDefinition(cwd),
+      ...(spawn === undefined ? [] : [createSpawnSessionToolDefinition(cwd, { spawn })]),
+      ...(subsessions === undefined ? [] : createSubsessionToolDefinitions(cwd, subsessions)),
+    ];
     const options = sessionStartEvent === undefined
       ? { services, sessionManager, customTools }
       : { services, sessionManager, sessionStartEvent, customTools };
@@ -232,6 +260,22 @@ export interface PiSessionServiceDependencies {
   modelRegistry?: ModelRegistryInstance;
   heartbeatIntervalMs?: number;
   workspaceActivity?: Pick<WorkspaceActivityService, "applySessionStatus" | "applySessionActivity" | "removeSession" | "reconcileSessionActivity">;
+  /**
+   * When provided, the `spawn_session` tool is registered on every session,
+   * letting the LLM start new sessions scoped to its project's workspaces.
+   * Omit to keep the capability disabled (the tool is never registered).
+   */
+  spawnTargets?: SpawnTargetResolver;
+  /**
+   * Beta: when true (and `spawnTargets` is provided), the tracked-subsession
+   * tools (`spawn_subsession`, `list_subsessions`, `check_subsession`,
+   * `read_subsession`) are
+   * registered on every session. Off by default so the capability can ship in
+   * main without being exposed in releases.
+   */
+  subsessionsEnabled?: boolean;
+  /** Structured logger for notable runtime events (e.g. spawns). */
+  logger?: PiSessionLogger;
 }
 
 export class PiSessionService {
@@ -242,6 +286,16 @@ export class PiSessionService {
   private readonly compactionPromptQueues = new Map<string, QueuedPrompt[]>();
   private readonly compactionDrainTimers = new Map<string, NodeJS.Timeout>();
   private readonly authLossWarnings = new Set<string>();
+  /** Tracked subsession id -> the parent session id that spawned it. */
+  private readonly subsessionParents = new Map<string, string>();
+  /** Parent session id -> the set of tracked subsession ids it spawned. */
+  private readonly subsessionChildren = new Map<string, Set<string>>();
+  /**
+   * Tracked subsession id -> whether a completion notification is armed.
+   * Armed when the child starts working; firing on completion disarms it so a
+   * child that works again (and stops again) notifies the parent each time.
+   */
+  private readonly subsessionNotifyArmed = new Map<string, boolean>();
   private readonly archiveStore: SessionArchiveRepository;
   private readonly agentDir: string;
   private readonly sessionManager: PiSessionManagerGateway;
@@ -249,19 +303,36 @@ export class PiSessionService {
   private readonly createAgentRuntime: CreateAgentRuntime;
   private readonly modelRegistry: ModelRegistryInstance;
   private readonly workspaceActivity: Pick<WorkspaceActivityService, "applySessionStatus" | "applySessionActivity" | "removeSession" | "reconcileSessionActivity"> | undefined;
+  private readonly spawnTargets: SpawnTargetResolver | undefined;
+  private readonly logger: PiSessionLogger;
 
   constructor(private readonly events: SessionEventHub, deps: PiSessionServiceDependencies = {}) {
     this.archiveStore = deps.archiveStore ?? new SessionArchiveStore();
     this.agentDir = deps.agentDir ?? getAgentDir();
     this.sessionManager = deps.sessionManager ?? createPiSessionManagerGateway({ agentDir: this.agentDir });
     this.modelRegistry = deps.modelRegistry ?? ModelRegistry.create(AuthStorage.create());
-    this.createRuntime = deps.createRuntime ?? createDefaultRuntimeFactory(this.modelRegistry.authStorage, this.modelRegistry);
+    this.spawnTargets = deps.spawnTargets;
+    this.logger = deps.logger ?? noopLogger;
+    // Subsessions are a beta capability gated behind their own flag, and they
+    // also require the spawn capability (they share its project-scope resolver).
+    const subsessionsActive = this.spawnTargets !== undefined && deps.subsessionsEnabled === true;
+    this.createRuntime = deps.createRuntime ?? createDefaultRuntimeFactory(
+      this.modelRegistry.authStorage,
+      this.modelRegistry,
+      this.spawnTargets === undefined ? undefined : (input) => this.spawnSession(input),
+      !subsessionsActive ? undefined : {
+        spawn: (input) => this.spawnSubsession(input),
+        list: (parentSessionId) => this.listSubsessions(parentSessionId),
+        check: (parentSessionId, sessionId) => this.checkSubsession(parentSessionId, sessionId),
+        read: (parentSessionId, sessionId, query) => this.readSubsession(parentSessionId, sessionId, query),
+      },
+    );
     this.createAgentRuntime = deps.createAgentRuntime ?? defaultCreateAgentRuntime;
     this.workspaceActivity = deps.workspaceActivity;
     this.heartbeat = setInterval(() => { this.publishHeartbeats(); }, deps.heartbeatIntervalMs ?? 2000);
     this.commandService = new SessionCommandService(
       (sessionId) => this.getActive(sessionId),
-      (sessionId, text) => this.prompt(sessionId, text),
+      (sessionId, text) => this.prompt(sessionId, text, undefined, undefined, { echoUserMessage: false }),
       events,
       {
         onCompactionStart: (session) => {
@@ -289,6 +360,9 @@ export class PiSessionService {
     this.activities.clear();
     this.compactionPromptQueues.clear();
     this.authLossWarnings.clear();
+    this.subsessionParents.clear();
+    this.subsessionChildren.clear();
+    this.subsessionNotifyArmed.clear();
     await Promise.all(activeSessions.map(async (active) => {
       active.unsubscribe();
       this.workspaceActivity?.removeSession(active.runtime.session.sessionId, active.runtime.session.sessionManager.getCwd());
@@ -315,10 +389,10 @@ export class PiSessionService {
     return [...unarchivedSessions, ...archivedSessions];
   }
 
-  async start(cwd: string): Promise<ClientSession> {
-    const active = await this.create(this.sessionManager.create(cwd), cwd);
+  async start(cwd: string, parentSession?: string): Promise<ClientSession> {
+    const active = await this.create(this.sessionManager.create(cwd, parentSession === undefined ? undefined : { parentSession }), cwd);
     const { session } = active.runtime;
-    return {
+    const created: ClientSession = {
       id: session.sessionId,
       path: session.sessionFile ?? "",
       cwd,
@@ -326,7 +400,163 @@ export class PiSessionService {
       modified: new Date().toISOString(),
       messageCount: session.messages.length,
       firstMessage: "",
+      // Include the parent so listeners can nest the new session in the tree
+      // immediately, instead of showing it flat until the next reload.
+      ...(parentSession === undefined ? {} : { parentSessionPath: parentSession }),
     };
+    // Broadcast so other clients (and the spawning agent's UI) can add the new
+    // session to their list without a manual reload.
+    this.events.publishGlobal({ type: "session.created", session: created });
+    return created;
+  }
+
+  /**
+   * Start a new session on behalf of a LLM and deliver an initial prompt to it.
+   * The target cwd is constrained to a workspace of the same registered project
+   * as the spawning session so the new session is visible in the web UI.
+   */
+  async spawnSession(input: SpawnSessionInvocation): Promise<SpawnSessionResult> {
+    if (this.spawnTargets === undefined) throw new Error("Spawning sessions is disabled");
+    const decision = await this.spawnTargets.resolveSpawnTarget(input.spawningCwd, input.cwd);
+    if (!decision.allowed) throw spawnTargetError(decision);
+    const created = await this.start(decision.cwd);
+    await this.prompt(created.id, input.prompt);
+    this.logger.info(
+      { spawningCwd: input.spawningCwd, sessionId: created.id, cwd: decision.cwd, promptLength: input.prompt.length },
+      "spawn_session started a new session",
+    );
+    return { sessionId: created.id, cwd: decision.cwd };
+  }
+
+  /**
+   * Start a *tracked* child session on behalf of a LLM. Identical to
+   * {@link spawnSession} in how the target cwd is resolved, but the child
+   * records its parent (so it shows in the session tree) and is registered so
+   * the parent is notified when it stops working and can inspect it later.
+   */
+  async spawnSubsession(input: SpawnSubsessionInvocation): Promise<SpawnSubsessionResult> {
+    if (this.spawnTargets === undefined) throw new Error("Spawning sessions is disabled");
+    const decision = await this.spawnTargets.resolveSpawnTarget(input.spawningCwd, input.cwd);
+    if (!decision.allowed) throw spawnTargetError(decision);
+    const created = await this.start(decision.cwd, input.parentSessionFile);
+    this.registerSubsession(input.parentSessionId, created.id);
+    await this.prompt(created.id, input.prompt);
+    this.logger.info(
+      { parentSessionId: input.parentSessionId, sessionId: created.id, cwd: decision.cwd, promptLength: input.prompt.length },
+      "spawn_subsession started a tracked child session",
+    );
+    return { sessionId: created.id, cwd: decision.cwd };
+  }
+
+  /** Summaries of the tracked subsessions spawned by `parentSessionId`. */
+  async listSubsessions(parentSessionId: string): Promise<SubsessionSummary[]> {
+    const childIds = this.subsessionChildren.get(parentSessionId);
+    if (childIds === undefined) return [];
+    return Promise.all([...childIds].map(async (childId) => ({ sessionId: childId, ...(await this.subsessionSummaryFields(childId)) })));
+  }
+
+  /** Status and final result of a subsession, scoped to the caller's children. */
+  async checkSubsession(parentSessionId: string, sessionId: string): Promise<SubsessionCheckResult> {
+    const session = await this.openSubsession(parentSessionId, sessionId);
+    const messages = historyMessages(session);
+    return {
+      sessionId,
+      cwd: session.sessionManager.getCwd(),
+      status: await this.subsessionStatus(session),
+      finalText: finalAssistantText(messages),
+      messageCount: messages.length,
+    };
+  }
+
+  /** Filtered, paginated transcript of a subsession, scoped to the caller's children. */
+  async readSubsession(parentSessionId: string, sessionId: string, query: SubsessionReadQuery): Promise<SubsessionReadResult> {
+    const session = await this.openSubsession(parentSessionId, sessionId);
+    const view = buildTranscriptView(historyMessages(session), query);
+    return {
+      sessionId,
+      cwd: session.sessionManager.getCwd(),
+      status: await this.subsessionStatus(session),
+      ...view,
+    };
+  }
+
+  /** Open a session after verifying it is one of the caller's tracked children. */
+  private async openSubsession(parentSessionId: string, sessionId: string): Promise<PiAgentSession> {
+    if (this.subsessionParents.get(sessionId) !== parentSessionId) {
+      throw new Error(`Session ${sessionId} is not one of your subsessions`);
+    }
+    return this.getOrOpen(sessionId);
+  }
+
+  private registerSubsession(parentSessionId: string, childSessionId: string): void {
+    this.subsessionParents.set(childSessionId, parentSessionId);
+    const children = this.subsessionChildren.get(parentSessionId) ?? new Set<string>();
+    children.add(childSessionId);
+    this.subsessionChildren.set(parentSessionId, children);
+    this.subsessionNotifyArmed.set(childSessionId, false);
+  }
+
+  private async subsessionSummaryFields(childSessionId: string): Promise<{ cwd: string; status: SubsessionStatus }> {
+    const active = this.active.get(childSessionId);
+    if (active !== undefined) {
+      return { cwd: active.runtime.cwd, status: await this.subsessionStatus(active.runtime.session) };
+    }
+    const archived = await this.archiveStore.get(childSessionId);
+    if (archived !== undefined) return { cwd: archived.cwd, status: "archived" };
+    return { cwd: "", status: "unknown" };
+  }
+
+  private async subsessionStatus(session: PiAgentSession): Promise<SubsessionStatus> {
+    if (await this.archiveStore.isArchived(session.sessionId)) return "archived";
+    if (this.hasActiveWork(session)) return "working";
+    if (this.activities.get(session.sessionId)?.phase === "error") return "error";
+    return "idle";
+  }
+
+  /**
+   * Drive parent notifications from a tracked child's status. Arms a pending
+   * notification while the child is working, and when it stops fires a single
+   * follow-up message to the parent via {@link prompt} (which queues if the
+   * parent is busy and delivers immediately when it is idle).
+   */
+  private updateSubsessionTracking(session: PiAgentSession): void {
+    const childId = session.sessionId;
+    const parentId = this.subsessionParents.get(childId);
+    if (parentId === undefined) return;
+    if (this.hasActiveWork(session)) {
+      this.subsessionNotifyArmed.set(childId, true);
+      return;
+    }
+    if (this.subsessionNotifyArmed.get(childId) !== true) return;
+    this.subsessionNotifyArmed.set(childId, false);
+    const status: SubsessionStatus = this.activities.get(childId)?.phase === "error" ? "error" : "idle";
+    const finalText = finalAssistantText(historyMessages(session));
+    const preview = finalText === "" ? "(no output)" : truncateForNotification(finalText);
+    const text = `Subsession ${childId} stopped working (status: ${status}). Latest output:\n\n${preview}\n\nUse check_subsession with sessionId "${childId}" for its status and latest output, or read_subsession to look through its full transcript.`;
+    void this.notifyParentOfSubsession(parentId, childId, text);
+  }
+
+  /**
+   * Deliver a subsession-completion notice to the parent as a system-authored
+   * custom message rather than a user message, so it is not attributed to the
+   * human in the transcript. It still wakes an idle parent (`triggerTurn`) and
+   * queues behind in-flight work (`deliverAs: "followUp"`), preserving the
+   * established "queue if busy, send and act if idle" behavior.
+   */
+  private async notifyParentOfSubsession(parentId: string, childId: string, text: string): Promise<void> {
+    try {
+      const session = await this.getOrOpen(parentId);
+      await session.sendCustomMessage(
+        { customType: SUBSESSION_NOTIFICATION_CUSTOM_TYPE, content: text, display: true, details: { sessionId: childId } },
+        { triggerTurn: true, deliverAs: "followUp" },
+      );
+      this.publishStatus(session);
+    } catch (error: unknown) {
+      this.logger.info(
+        { parentSessionId: parentId, sessionId: childId, error: error instanceof Error ? error.message : String(error) },
+        "failed to notify parent of subsession completion",
+      );
+    }
   }
 
   async messages(ref: PiSessionLookup, page?: { before?: number; limit?: number }): Promise<unknown[] | ClientMessagePage> {
@@ -417,8 +647,13 @@ export class PiSessionService {
     return commands.sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  async prompt(ref: PiSessionLookup, text: unknown, streamingBehavior?: unknown, attachments?: unknown): Promise<void> {
+  async prompt(ref: PiSessionLookup, text: unknown, streamingBehavior?: unknown, attachments?: unknown, options?: { echoUserMessage?: boolean }): Promise<void> {
     const promptText = requirePromptText(text);
+    // Command-forwarded prompts (e.g. /skill:*) are expanded by the agent, which
+    // streams the canonical message back. The client doesn't render the raw
+    // command text, so the server must not echo it either, or it would show up
+    // as a transient line that vanishes on reload.
+    const echoUserMessage = options?.echoUserMessage !== false;
     const requestedBehavior = parsePromptStreamingBehavior(streamingBehavior);
     const parsedAttachments = parsePromptAttachments(attachments, { enforceInlineSizeLimit: false });
     const images = (await attachmentsToInlineImages(parsedAttachments)).map((entry) => entry.image);
@@ -433,15 +668,15 @@ export class PiSessionService {
       return;
     }
     if (session.isCompacting) {
-      this.enqueuePromptDuringCompaction(session, promptText, behavior ?? "followUp", images);
+      this.enqueuePromptDuringCompaction(session, promptText, behavior ?? "followUp", images, echoUserMessage);
       return;
     }
-    void this.submitPrompt(session, promptText, behavior, images);
+    void this.submitPrompt(session, promptText, behavior, images, echoUserMessage);
   }
 
-  private submitPrompt(session: PiAgentSession, text: string, behavior: QueuedPromptKind | undefined, images: ImageContent[] = []): Promise<void> {
+  private submitPrompt(session: PiAgentSession, text: string, behavior: QueuedPromptKind | undefined, images: ImageContent[] = [], echoUserMessage = true): Promise<void> {
     this.publishActivity(session, behavior === "steer" ? "steering queued" : behavior === "followUp" ? "message queued" : "prompt accepted", "active");
-    if (behavior === undefined) this.events.publish(session.sessionId, { type: "message.append", message: userMessage(text, images) });
+    if (behavior === undefined && echoUserMessage) this.events.publish(session.sessionId, { type: "message.append", message: userMessage(text, images) });
     const promptOptions = buildPromptOptions(behavior, images);
     const promptPromise = session.prompt(text, promptOptions).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
@@ -452,9 +687,9 @@ export class PiSessionService {
     return promptPromise;
   }
 
-  private enqueuePromptDuringCompaction(session: PiAgentSession, text: string, kind: QueuedPromptKind, images: ImageContent[] = []): void {
+  private enqueuePromptDuringCompaction(session: PiAgentSession, text: string, kind: QueuedPromptKind, images: ImageContent[] = [], echoUserMessage = true): void {
     const queue = this.compactionPromptQueues.get(session.sessionId) ?? [];
-    queue.push({ kind, text, ...(images.length > 0 ? { images } : {}) });
+    queue.push({ kind, text, ...(images.length > 0 ? { images } : {}), ...(echoUserMessage ? {} : { echoUserMessage: false }) });
     this.compactionPromptQueues.set(session.sessionId, queue);
     this.publishActivity(session, "message queued during compaction", "active");
     this.publishStatus(session);
@@ -684,6 +919,10 @@ export class PiSessionService {
     this.workspaceActivity?.removeSession(sessionId, active.runtime.session.sessionManager.getCwd());
     this.clearAuthLossWarningsForSession(sessionId);
     this.clearCompactionPromptQueue(sessionId);
+    // Disarm subsession notification before teardown so the abort below cannot
+    // emit a "stopped working" event that notifies the parent (e.g. on archive).
+    // The parent/children link is kept so the parent can still see the child.
+    this.subsessionNotifyArmed.delete(sessionId);
     clearSessionQueue(active.runtime.session);
     active.unsubscribe();
     try {
@@ -772,6 +1011,7 @@ export class PiSessionService {
       if (eventType === "compaction_end") this.scheduleCompactionQueueDrain(session.sessionId);
       if (eventType === "agent_start" || eventType === "agent_end") this.scheduleCompactionQueueDrain(session.sessionId);
       this.publishStatus(session);
+      this.updateSubsessionTracking(session);
     });
     this.active.set(session.sessionId, active);
   }
@@ -798,14 +1038,14 @@ export class PiSessionService {
       const queued = this.takeCompactionPromptQueue(sessionId);
       if (queued.length === 0) return;
       this.publishStatus(session);
-      for (const prompt of queued) void this.submitPrompt(session, prompt.text, prompt.kind, prompt.images);
+      for (const prompt of queued) void this.submitPrompt(session, prompt.text, prompt.kind, prompt.images, prompt.echoUserMessage ?? true);
       return;
     }
 
     const prompt = this.shiftCompactionPrompt(sessionId);
     if (prompt === undefined) return;
     this.publishStatus(session);
-    const submitted = this.submitPrompt(session, prompt.text, undefined, prompt.images);
+    const submitted = this.submitPrompt(session, prompt.text, undefined, prompt.images, prompt.echoUserMessage ?? true);
     void submitted.finally(() => { this.scheduleCompactionQueueDrain(sessionId); });
   }
 
@@ -902,6 +1142,10 @@ export class PiSessionService {
   private publishHeartbeats(): void {
     for (const active of this.active.values()) {
       const { session } = active.runtime;
+      // Re-evaluate subsession completion here too: agent_end can arrive while
+      // the session still reports active work transiently, so the event-driven
+      // latch may not fire. The heartbeat re-checks once the session settles.
+      this.updateSubsessionTracking(session);
       const activity = this.activities.get(session.sessionId);
       if (!this.hasActiveWork(session)) {
         if (activity?.phase === "active") this.publishStatus(session);
@@ -1229,6 +1473,33 @@ function historyMessages(session: PiAgentSession): unknown[] {
     else if (entry["type"] === "branch_summary") messages.push({ role: "system", source: "branch_summary", content: `Branch summary:\n\n${stringValue(entry["summary"])}` });
   }
   return messages;
+}
+
+/** customType marking a parent-facing subsession-completion notice. */
+const SUBSESSION_NOTIFICATION_CUSTOM_TYPE = "subsession.completion";
+
+const SUBSESSION_NOTIFICATION_PREVIEW_CHARS = 2000;
+
+function truncateForNotification(text: string): string {
+  if (text.length <= SUBSESSION_NOTIFICATION_PREVIEW_CHARS) return text;
+  return `${text.slice(0, SUBSESSION_NOTIFICATION_PREVIEW_CHARS)}…`;
+}
+
+/** Most recent assistant text from a history message list, or "" if none. */
+function finalAssistantText(messages: readonly unknown[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+    if (!isRecord(message) || message["role"] !== "assistant") continue;
+    const content = message["content"];
+    if (typeof content === "string") return content;
+    if (!Array.isArray(content)) continue;
+    const texts: string[] = [];
+    for (const part of content) {
+      if (isRecord(part) && part["type"] === "text" && typeof part["text"] === "string") texts.push(part["text"]);
+    }
+    if (texts.length > 0) return texts.join("\n").trim();
+  }
+  return "";
 }
 
 function toClientEvent(event: unknown): SessionUiEvent {

@@ -3,10 +3,29 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Install PI WEB</title>
-    <meta name="description" content="Complete installation guide for PI WEB on Linux, macOS, and Windows WSL." />
-    <meta property="og:title" content="Install PI WEB" />
-    <meta property="og:image" content="assets/pi-web-banner.png" />
+    <title>Install PI WEB — web UI for Pi Coding Agent</title>
+    <meta
+      name="description"
+      content="Install PI WEB, the web UI for Pi Coding Agent, on Linux, macOS, or Windows WSL with persistent user services."
+    />
+    <link rel="canonical" href="https://pi-web.dev/install" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="PI WEB" />
+    <meta property="og:title" content="Install PI WEB — web UI for Pi Coding Agent" />
+    <meta
+      property="og:description"
+      content="Install PI WEB with npm, Pi, or manual service commands and keep Pi Coding Agent sessions running."
+    />
+    <meta property="og:url" content="https://pi-web.dev/install" />
+    <meta property="og:image" content="https://pi-web.dev/assets/pi-web-banner.png" />
+    <meta property="og:image:alt" content="PI WEB browser UI for persistent Pi Coding Agent sessions" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Install PI WEB — web UI for Pi Coding Agent" />
+    <meta
+      name="twitter:description"
+      content="Install PI WEB with npm, Pi, or manual service commands and keep Pi Coding Agent sessions running."
+    />
+    <meta name="twitter:image" content="https://pi-web.dev/assets/pi-web-banner.png" />
     <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
     <script>
       (() => {
@@ -28,11 +47,12 @@
         <a class="brand" href="./" aria-label="PI WEB home">PI WEB</a>
         <div class="nav-links">
           <div class="nav-pages">
-            <a href="remote-first.html">Remote-first</a>
-            <a href="machines.html">Fleet</a>
-            <a href="install.html" aria-current="page">Install</a>
-            <a href="plugins.html">Plugins</a>
-            <a href="faq.html">FAQ</a>
+            <a href="remote-first">Remote-first</a>
+            <a href="machines">Fleet</a>
+            <a href="install" aria-current="page">Install</a>
+            <a href="config">Config</a>
+            <a href="plugins">Plugins</a>
+            <a href="faq">FAQ</a>
           </div>
           <div class="nav-actions">
             <a class="github-link" href="https://github.com/jmfederico/pi-web" aria-label="PI WEB on GitHub">
@@ -213,7 +233,7 @@
                 remote runtime.
               </p>
               <div class="doc-actions">
-                <a class="button" href="machines.html">Read the fleet guide</a>
+                <a class="button" href="machines">Read the fleet guide</a>
               </div>
             </section>
 
@@ -246,27 +266,33 @@
               </p>
               <div class="code-card">
                 <div class="copy-row">
-                  <strong>Default config</strong>
+                  <strong>Common config</strong>
                   <button class="copy-button" data-copy="#config-example">Copy</button>
                 </div>
                 <pre id="config-example"><code>{
   "host": "127.0.0.1",
   "port": 8504,
-  "allowedHosts": []
+  "pathAccess": {
+    "allowedPaths": ["~/SDKs", "/opt/reference"]
+  },
+  "spawnSessions": true,
+  "subsessions": false
 }</code></pre>
               </div>
               <p>
-                The web server defaults to <code>127.0.0.1:8504</code> and stores PI WEB state in <code>~/.pi-web</code>.
+                Use <strong>Settings → General</strong> for host, port, and external filesystem roots; <strong>Settings → Session daemon</strong>
+                for agent-spawn tools; <strong>Settings → Plugins</strong> for plugin enablement; and <strong>Settings → Keyboard</strong>
+                for shortcut overrides.
               </p>
-              <ul>
-                <li><code>PI_WEB_CONFIG</code>: path to a config JSON file. Defaults to <code>~/.config/pi-web/config.json</code>.</li>
-                <li><code>PI_WEB_PORT</code> or <code>PORT</code>: web server port. Overrides the config file.</li>
-                <li><code>PI_WEB_HOST</code>: web server bind host. Overrides the config file. Use <code>127.0.0.1</code> for local/tunnel-only access, or a specific VPN/private-network IP for trusted remote access.</li>
-                <li><code>PI_WEB_DATA_DIR</code>: data directory, default <code>~/.pi-web</code>.</li>
-                <li><code>PI_WEB_SESSIOND_SOCKET</code>: Unix socket path for daemon communication.</li>
-                <li><code>PI_CODING_AGENT_SESSION_DIR</code>: Pi session storage directory. PI WEB follows Pi's priority for sessions: this environment variable, then <code>sessionDir</code> in Pi settings for the selected workspace, then Pi's default session directory.</li>
-                <li><code>PI_CODING_AGENT_DIR</code>: Pi agent config directory for auth, settings, resources, and default session storage.</li>
-              </ul>
+              <div class="callout">
+                Need the full schema, restart rules, project-local <code>.pi-web/config.json</code>, path access details, and
+                environment variable reference? Read the <a href="config">configuration reference</a>.
+              </div>
+              <p>
+                The web server defaults to <code>127.0.0.1:8504</code>, and PI WEB-managed state defaults to
+                <code>~/.pi-web</code>. External filesystem paths are denied by default unless listed in
+                <code>pathAccess.allowedPaths</code>.
+              </p>
             </section>
 
             <section id="uninstall">
@@ -313,10 +339,11 @@
         <span>PI WEB docs</span>
         <div class="footer-links">
           <a href="./">Home</a>
-          <a href="remote-first.html">Remote-first</a>
-          <a href="machines.html">Fleet</a>
-          <a href="plugins.html">Plugins</a>
-          <a href="faq.html">FAQ</a>
+          <a href="remote-first">Remote-first</a>
+          <a href="machines">Fleet</a>
+          <a href="config">Config</a>
+          <a href="plugins">Plugins</a>
+          <a href="faq">FAQ</a>
           <a href="https://github.com/jmfederico/pi-web">GitHub</a>
         </div>
       </div>

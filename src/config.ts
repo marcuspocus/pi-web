@@ -82,6 +82,11 @@ export function effectivePiWebConfig(options: LoadOptions = {}): LoadedPiWebConf
       ...(port !== undefined && port !== "" ? { port: parsePort(port, "PI_WEB_PORT") } : {}),
       ...(allowedHosts !== undefined && allowedHosts !== "" ? { allowedHosts: parseAllowedHostsEnv(allowedHosts) } : {}),
       ...(maxUpload !== undefined && maxUpload !== "" ? { maxUploadBytes: parseMaxUploadBytes(maxUpload, "PI_WEB_MAX_UPLOAD_BYTES") } : {}),
+      // Always resolved (on by default) so the effective config is the single
+      // source of truth for the runtime state and the settings UI toggle.
+      spawnSessions: spawnSessionsEnabled(env, loaded.config),
+      // Beta capability, resolved off by default.
+      subsessions: subsessionsEnabled(env, loaded.config),
     },
   };
 }
@@ -96,7 +101,10 @@ export function savePiWebConfig(config: PiWebConfig, options: LoadOptions = {}):
   delete existing["allowedHosts"];
   delete existing["shortcuts"];
   delete existing["plugins"];
+  delete existing["pathAccess"];
   delete existing["maxUploadBytes"];
+  delete existing["spawnSessions"];
+  delete existing["subsessions"];
   const merged = { ...existing, ...piWebConfigRecord(normalized) };
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(merged, null, 2)}\n`, "utf8");
@@ -117,7 +125,10 @@ function piWebConfigRecord(config: PiWebConfig): Record<string, unknown> {
     ...(config.allowedHosts !== undefined ? { allowedHosts: config.allowedHosts } : {}),
     ...(config.shortcuts !== undefined ? { shortcuts: config.shortcuts } : {}),
     ...(config.plugins !== undefined ? { plugins: config.plugins } : {}),
+    ...(config.pathAccess !== undefined ? { pathAccess: config.pathAccess } : {}),
     ...(config.maxUploadBytes !== undefined ? { maxUploadBytes: config.maxUploadBytes } : {}),
+    ...(config.spawnSessions !== undefined ? { spawnSessions: config.spawnSessions } : {}),
+    ...(config.subsessions !== undefined ? { subsessions: config.subsessions } : {}),
   };
 }
 
@@ -128,7 +139,10 @@ function parsePiWebConfig(value: Record<string, unknown>, path: string): PiWebCo
     ...(value["allowedHosts"] !== undefined ? { allowedHosts: parseAllowedHosts(value["allowedHosts"], path) } : {}),
     ...(value["shortcuts"] !== undefined ? { shortcuts: parseShortcuts(value["shortcuts"], path) } : {}),
     ...(value["plugins"] !== undefined ? { plugins: parsePlugins(value["plugins"], path) } : {}),
+    ...(value["pathAccess"] !== undefined ? { pathAccess: parsePathAccessConfig(value["pathAccess"], path) } : {}),
     ...(value["maxUploadBytes"] !== undefined ? { maxUploadBytes: parseMaxUploadBytes(value["maxUploadBytes"], "maxUploadBytes", path) } : {}),
+    ...(value["spawnSessions"] !== undefined ? { spawnSessions: parseSpawnSessions(value["spawnSessions"], path) } : {}),
+    ...(value["subsessions"] !== undefined ? { subsessions: parseSubsessions(value["subsessions"], path) } : {}),
   };
 }
 
@@ -136,6 +150,42 @@ function parseMaxUploadBytes(value: unknown, key: string, path = "environment"):
   const bytes = typeof value === "number" ? value : typeof value === "string" && value !== "" ? Number(value) : NaN;
   if (!Number.isInteger(bytes) || bytes < 1) throw new Error(`PI WEB config ${key} must be a positive integer: ${path}`);
   return bytes;
+}
+
+function parseSpawnSessions(value: unknown, path: string): boolean {
+  if (typeof value !== "boolean") throw new Error(`PI WEB config spawnSessions must be a boolean: ${path}`);
+  return value;
+}
+
+/**
+ * Whether LLMs may start new sessions via the spawn_session tool. On by default
+ * (spawned sessions appear in the session list, so humans notice them); set the
+ * env var `PI_WEB_SPAWN_SESSIONS` or the `spawnSessions` config key to `false`
+ * to disable. The env var takes precedence over the config file.
+ */
+export function spawnSessionsEnabled(env: NodeJS.ProcessEnv = process.env, config: PiWebConfig = {}): boolean {
+  const fromEnv = env["PI_WEB_SPAWN_SESSIONS"];
+  if (fromEnv !== undefined && fromEnv !== "") return fromEnv === "1" || fromEnv.toLowerCase() === "true";
+  return config.spawnSessions ?? true;
+}
+
+function parseSubsessions(value: unknown, path: string): boolean {
+  if (typeof value !== "boolean") throw new Error(`PI WEB config subsessions must be a boolean: ${path}`);
+  return value;
+}
+
+/**
+ * Beta: whether LLMs may start tracked child sessions via the spawn_subsession
+ * family of tools. Off by default while the capability stabilizes, so it can
+ * ship in main without affecting releases; enable with the env var
+ * `PI_WEB_SUBSESSIONS` or the `subsessions` config key. The env var takes
+ * precedence over the config file. Subsessions also require spawnSessions to be
+ * enabled (they share the same project-scope resolver).
+ */
+export function subsessionsEnabled(env: NodeJS.ProcessEnv = process.env, config: PiWebConfig = {}): boolean {
+  const fromEnv = env["PI_WEB_SUBSESSIONS"];
+  if (fromEnv !== undefined && fromEnv !== "") return fromEnv === "1" || fromEnv.toLowerCase() === "true";
+  return config.subsessions ?? false;
 }
 
 function parseString(value: unknown, key: string, path: string): string {
@@ -160,6 +210,19 @@ function parseAllowedHosts(value: unknown, path: string): string[] | true {
 function parseAllowedHostsEnv(value: string): string[] | true {
   if (value === "true") return true;
   return value.split(",").map((host) => host.trim()).filter((host) => host !== "");
+}
+
+export function parsePathAccessConfig(value: unknown, path: string): NonNullable<PiWebConfigValues["pathAccess"]> {
+  if (!isRecord(value)) throw new Error(`PI WEB config pathAccess must be an object: ${path}`);
+  const allowedPaths = value["allowedPaths"];
+  return {
+    ...(allowedPaths !== undefined ? { allowedPaths: parseAllowedPaths(allowedPaths, path) } : {}),
+  };
+}
+
+function parseAllowedPaths(value: unknown, path: string): string[] {
+  if (!isNonEmptyStringArray(value)) throw new Error(`PI WEB config pathAccess.allowedPaths must be an array of non-empty strings: ${path}`);
+  return value;
 }
 
 function parseShortcuts(value: unknown, path: string): Record<string, string | null> {
